@@ -1,0 +1,32 @@
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
+/** Single source of truth for news records (not exposed as a public static file). */
+const DATA_DIR = join(process.cwd(), 'data');
+const DB_PATH = join(DATA_DIR, 'DB.csv');
+
+export async function GET() {
+  try {
+    if (!existsSync(DB_PATH)) {
+      return new Response('', {
+        status: 200,
+        headers: { 'Content-Type': 'text/csv; charset=utf-8' },
+      });
+    }
+    const csvText = readFileSync(DB_PATH, 'utf8');
+    return new Response(csvText, {
+      status: 200,
+      headers: { 'Content-Type': 'text/csv; charset=utf-8' },
+    });
+  } catch (error) {
+    console.error('Error reading DB.csv:', error);
+    return new Response('Error', { status: 500 });
+  }
+}
+
+export async function POST() {
+  return new Response('DB.csv is read-only; use GET to read.', {
+    status: 405,
+    headers: { Allow: 'GET' },
+  });
+}
