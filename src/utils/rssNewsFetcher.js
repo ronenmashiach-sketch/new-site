@@ -97,10 +97,14 @@ export async function fetchNewsFromRSS(source) {
     let rssUrl = getRSSFeedURL(source.key);
     let siteUrl = source.url;
 
+    let ynetFlashersRssUrl = '';
     if (source.key === 'ynet') {
       const ynetCfg = await getYnetUrlConfig();
       if (ynetCfg.rssUrl) rssUrl = ynetCfg.rssUrl;
       if (ynetCfg.siteUrl) siteUrl = ynetCfg.siteUrl;
+      if (typeof ynetCfg.flashersRssUrl === 'string' && ynetCfg.flashersRssUrl.trim()) {
+        ynetFlashersRssUrl = ynetCfg.flashersRssUrl.trim();
+      }
     }
 
     if (!rssUrl) {
@@ -127,8 +131,16 @@ export async function fetchNewsFromRSS(source) {
     // Extract image URL
     const imageUrl = latestItem.thumbnail || null;
 
-    // For flashers, we'll take the next few headlines
-    const flashers = newsItems.slice(1, 6).map(item => item.title);
+    let flashers = newsItems.slice(1, 31).map((item) => item.title);
+    if (source.key === 'ynet' && ynetFlashersRssUrl && ynetFlashersRssUrl !== rssUrl) {
+      try {
+        const flXml = await fetchRssXmlText(ynetFlashersRssUrl);
+        const flItems = parseRSSXML(flXml);
+        flashers = flItems.slice(0, 40).map((item) => item.title);
+      } catch (e) {
+        console.warn('ynet flashers RSS failed, falling back to main feed:', e?.message || e);
+      }
+    }
 
     return {
       main_headline_he: mainHeadline,

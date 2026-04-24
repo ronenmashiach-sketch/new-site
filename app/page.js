@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { NEWS_SOURCES, LANGUAGES } from "@/lib/newsSources";
 import NewsHeader from "@/components/news/NewsHeader";
 import NewsCard from "@/components/news/NewsCard";
@@ -9,8 +9,6 @@ import { listNewsSource } from "@/utils/csvDatabase";
 import { useAuth } from "@/lib/AuthContext";
 import UserNotRegisteredError from "@/components/UserNotRegisteredError";
 import MissingBase44Config from "@/components/MissingBase44Config";
-
-const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes per card
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +24,6 @@ export default function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [loadingKeys, setLoadingKeys] = useState(new Set());
-  const intervalRef = useRef(null);
 
   useEffect(() => {
     if (authError?.type !== 'auth_required' || !appParams?.appId?.trim()) return;
@@ -52,13 +49,13 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Fetch news from RSS. On failure we rethrow (DB.csv is never written by the app).
+  // Fetch news from RSS. On failure we rethrow. DB.csv מתעדכן מ־`/api/ynet` לשורת ynet בלבד.
   const fetchSource = useCallback(async (source) => {
     const { fetchNewsFromRSS } = await import("@/utils/rssNewsFetcher");
     return await fetchNewsFromRSS(source);
   }, []);
 
-  // Refresh all sources in batches (RSS → UI state only; DB.csv is not written)
+  // ריענון ידני בלבד (RSS → מצב במסך; לא כותב ל־DB.csv)
   const refreshAllSources = useCallback(async () => {
     setIsRefreshing(true);
     const allKeys = new Set(NEWS_SOURCES.map((s) => s.key));
@@ -90,57 +87,11 @@ export default function Dashboard() {
     setIsRefreshing(false);
   }, [fetchSource]);
 
-  // Initial load
+  // טעינה ראשונה: רק מ־DB.csv — בלי RSS וללא עדכון רשת אוטומטי.
   useEffect(() => {
     if (isLoadingPublicSettings || isLoadingAuth || authError) return;
-    loadCachedData().then(() => {
-      // Check if data is stale (older than 5 min)
-      // If no data, trigger refresh
-      listNewsSource("-updated_date", 1).then((items) => {
-        if (items.length === 0) {
-          refreshAllSources();
-        } else {
-          const lastFetch = new Date(items[0].last_fetched || items[0].updated_date);
-          const now = new Date();
-          if (now.getTime() - lastFetch.getTime() > REFRESH_INTERVAL) {
-            refreshAllSources();
-          }
-        }
-      });
-    });
-  }, [refreshAllSources, loadCachedData, isLoadingPublicSettings, isLoadingAuth, authError]);
-
-  // Auto-refresh each card individually every 5 minutes
-  useEffect(() => {
-    if (isLoadingPublicSettings || isLoadingAuth || authError) return;
-    const timers = NEWS_SOURCES.map((source, i) => {
-      // Stagger the start so they don't all fire at once
-      const staggerDelay = i * 15 * 1000; // 15s apart
-      const initialTimer = setTimeout(() => {
-        const interval = setInterval(async () => {
-          setLoadingKeys((prev) => new Set([...prev, source.key]));
-          try {
-            const data = await fetchSource(source);
-            setNewsData((prev) => ({ ...prev, [source.key]: data }));
-            setLastUpdated(new Date().toISOString());
-          } catch (err) {
-            console.error(`Failed to refresh ${source.name}:`, err);
-          } finally {
-            setLoadingKeys((prev) => {
-              const next = new Set(prev);
-              next.delete(source.key);
-              return next;
-            });
-          }
-        }, REFRESH_INTERVAL);
-        intervalRef.current = interval;
-        return interval;
-      }, staggerDelay);
-      return initialTimer;
-    });
-
-    return () => timers.forEach((t) => clearTimeout(t));
-  }, [fetchSource, isLoadingPublicSettings, isLoadingAuth, authError]);
+    loadCachedData();
+  }, [loadCachedData, isLoadingPublicSettings, isLoadingAuth, authError]);
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
@@ -206,10 +157,10 @@ export default function Dashboard() {
           <div className="max-w-7xl mx-auto px-4 text-center">
             <p className="text-xs text-muted-foreground">
               {lang === "he"
-                ? "הנתונים מתעדכנים כל 10 דקות. המקור: אתרי חדשות מהמזרח התיכון והעולם."
+                ? "בטעינת הדף מוצג מה שנשמר בקובץ הנתונים. לעדכון מהרשת השתמשו בכפתור הרענון."
                 : lang === "ar"
-                ? "يتم تحديث البيانات كل 10 دقائق. المصدر: مواقع إخبارية من الشرق الأوسط والعالم."
-                : "Data refreshes every 10 minutes. Source: News outlets from the Middle East & World."}
+                ? "عند التحميل يُعرض ما هو محفوظ في الملف. لتحديث من الشبكة استخدم زر التحديث."
+                : "On load, data comes from the saved file. Use the refresh button to fetch live feeds."}
             </p>
           </div>
         </footer>

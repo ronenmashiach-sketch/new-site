@@ -1,4 +1,4 @@
-// CSV "database": file at data/DB.csv (read-only at runtime). Browser loads via GET /api/csv; server uses fs read only.
+// CSV "database": file at data/DB.csv. קריאה בדפדפן ובשרת; כתיבה לדיסק רק מ־`csvDatabaseWrite.server.js` (למשל `/api/ynet`).
 const CSV_API_PATH = '/api/csv';
 
 /** Stable column order (matches Base44 / NewsSource export). */
@@ -154,7 +154,11 @@ export function objectsToCSV(data) {
 
 // Parse CSV string to array of objects (exported for tests / tooling)
 export function parseCSV(csvText) {
-  const normalized = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  const normalized = csvText
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim();
   if (!normalized) return [];
 
   const rowStrings = splitCSVRows(normalized).filter((r) => r.length > 0);
@@ -217,8 +221,7 @@ export async function loadCSVData() {
 }
 
 /**
- * CSV is read-only at runtime: DB.csv is not written (manual edits / import only).
- * create/update still call this for API compatibility; it does nothing.
+ * create/update בקוד ישן קוראים לכאן — נשאר no-op. כתיבה ל־CSV: `csvDatabaseWrite.server.js`.
  */
 export async function saveCSVData(_data) {
   return true;

@@ -25,8 +25,11 @@ export async function GET() {
 }
 
 export async function POST() {
-  return new Response('DB.csv is read-only; use GET to read.', {
-    status: 405,
-    headers: { Allow: 'GET' },
-  });
+  return new Response(
+    'DB.csv: קריאה בלבד דרך GET. עדכון שורת ynet מתבצע אוטומטית בסוף קריאה ל־GET /api/ynet.',
+    {
+      status: 405,
+      headers: { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8' },
+    }
+  );
 }

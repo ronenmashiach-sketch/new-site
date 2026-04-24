@@ -1,4 +1,5 @@
 {
   "siteUrl": "https://www.ynet.co.il",
-  "rssUrl": "https://www.ynet.co.il/Integration/StoryRss1854.xml"
+  "rssUrl": "https://www.ynet.co.il/Integration/StoryRss2.xml",
+  "flashersRssUrl": "https://www.ynet.co.il/Integration/StoryRss1854.xml"
 }

@@ -40,7 +40,7 @@ export async function GET() {
 
 /**
  * PUT — update `data/ynet-urls.json` (partial merge).
- * Body: `{ "siteUrl"?: string, "rssUrl"?: string }`
+ * Body: `{ "siteUrl"?: string, "rssUrl"?: string, "flashersRssUrl"?: string }`
  */
 export async function PUT(request) {
   try {
@@ -58,6 +58,16 @@ export async function PUT(request) {
         return Response.json({ error: 'rssUrl must be a valid http(s) URL' }, { status: 400 });
       }
       next.rssUrl = body.rssUrl.trim();
+    }
+    if (body.flashersRssUrl !== undefined) {
+      if (body.flashersRssUrl !== null && body.flashersRssUrl !== '' && !isHttpUrl(body.flashersRssUrl)) {
+        return Response.json({ error: 'flashersRssUrl must be a valid http(s) URL or empty' }, { status: 400 });
+      }
+      if (body.flashersRssUrl === null || body.flashersRssUrl === '') {
+        delete next.flashersRssUrl;
+      } else {
+        next.flashersRssUrl = body.flashersRssUrl.trim();
+      }
     }
 
     if (!existsSync(DATA_DIR)) {

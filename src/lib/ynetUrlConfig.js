@@ -1,7 +1,11 @@
-/** Matches `rssNewsFetcher` default for ynet */
+/**
+ * ynet: `StoryRss2` = ערוץ "חדשות" (כותרות ראשיות לפי סדר הפיד).
+ * `StoryRss1854` = ערוץ "מבזקים" בלבד — לא מתאים כ־rssUrl לכותרת ראשית.
+ */
 export const DEFAULT_YNET_URLS = {
   siteUrl: 'https://www.ynet.co.il',
   rssUrl: 'https://www.ynet.co.il/Integration/StoryRss2.xml',
+  flashersRssUrl: 'https://www.ynet.co.il/Integration/StoryRss1854.xml',
 };
 
 /**

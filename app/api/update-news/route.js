@@ -2,7 +2,7 @@ import { NEWS_SOURCES } from '@/lib/newsSources';
 import { fetchNewsFromRSS } from '@/utils/rssNewsFetcher';
 
 /**
- * Fetches RSS in memory only — does not write DB.csv (CSV is read-only).
+ * מושך RSS לזיכרון בלבד — לא כותב ל־DB.csv (עדכון ynet ב־GET /api/ynet).
  */
 export async function POST() {
   try {

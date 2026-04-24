@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "dev:debug": "cross-env DEBUG=next:* next dev",
+    "dev:inspect": "cross-env NODE_OPTIONS=--inspect node ./node_modules/next/dist/bin/next dev",
     "dev:clean": "node scripts/clean-next.mjs && next dev",
     "build": "next build",
     "start": "next start",
@@ -52,6 +54,7 @@
     "@types/react-dom": "^18.2.22",
     "autoprefixer": "^10.4.20",
     "baseline-browser-mapping": "^2.8.32",
+    "cross-env": "^10.1.0",
     "eslint": "^9.19.0",
     "eslint-config-next": "16.2.4",
     "eslint-plugin-react": "^7.37.4",
