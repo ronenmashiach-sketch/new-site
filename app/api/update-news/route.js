@@ -2,7 +2,7 @@ import { NEWS_SOURCES } from '@/lib/newsSources';
 import { fetchNewsFromRSS } from '@/utils/rssNewsFetcher';
 
 /**
- * מושך RSS לזיכרון בלבד — לא כותב ל־DB.csv (עדכון ynet ב־GET /api/ynet).
+ * מושך RSS לזיכרון בלבד — לא כותב ל־DB.csv (עדכון: GET /api/ynet או GET /api/maariv).
  */
 export async function POST() {
   try {

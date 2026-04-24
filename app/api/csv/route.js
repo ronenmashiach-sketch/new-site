@@ -26,7 +26,7 @@ export async function GET() {
 
 export async function POST() {
   return new Response(
-    'DB.csv: קריאה בלבד דרך GET. עדכון שורת ynet מתבצע אוטומטית בסוף קריאה ל־GET /api/ynet.',
+    'DB.csv: קריאה בלבד דרך GET. עדכון שורות ynet/maariv בסוף GET /api/ynet או GET /api/maariv.',
     {
       status: 405,
       headers: { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8' },

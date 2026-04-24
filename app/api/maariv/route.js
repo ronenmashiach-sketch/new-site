@@ -1,13 +1,11 @@
-import { isAllowedRssHostUrl } from '@/lib/allowedRssHosts';
-import { getYnetUrlConfig } from '@/lib/ynetUrlConfig';
-import { parseRssItemsServer } from '@/utils/rssParseServer';
-import { extractYnetHomepageHeroFromHtml } from '@/utils/ynetHomepageHeroScrape';
+import { extractMaarivBreakingItemsFromHtml, extractMaarivHomepageHeroFromHtml } from '@/utils/maarivScrape';
 import { translateManyStrings, translateOneToMany } from '@/utils/googleTranslate';
-import { buildYnetDbCsvUpdates, syncYnetRowToDbCsv } from '@/utils/ynetDbCsvSync';
+import { buildMaarivDbCsvUpdates, syncMaarivRowToDbCsv } from '@/utils/maarivDbCsvSync';
 
 export const dynamic = 'force-dynamic';
 
-const DEFAULT_HOME = 'https://www.ynet.co.il/';
+const DEFAULT_HOME = 'https://www.maariv.co.il/';
+const DEFAULT_BREAKING = 'https://www.maariv.co.il/breaking-news';
 const DEFAULT_FLASHERS = 40;
 const MAX_FLASHERS = 120;
 const DEFAULT_TRANSLATE_LANGS = ['en', 'ar'];
@@ -23,7 +21,6 @@ function parseTranslateLangs(raw) {
     .filter((s) => ALLOWED_TRANSLATE_LANGS.has(s));
 }
 
-/** כש־`translate` פעיל: האם לתרגם גם כותרות מבזקים (ברירת מחדל: כן). `translateFlashers=0` לביטול. */
 function parseTranslateFlashers(raw) {
   if (raw === null || raw === undefined) return true;
   const v = String(raw).trim().toLowerCase();
@@ -32,38 +29,36 @@ function parseTranslateFlashers(raw) {
   return true;
 }
 
-function isYnetHomeUrl(urlString) {
+function isMaarivHostUrl(urlString) {
   try {
     const u = new URL(urlString);
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
     const h = u.hostname.toLowerCase();
-    return h === 'ynet.co.il' || h.endsWith('.ynet.co.il');
+    return h === 'maariv.co.il' || h.endsWith('.maariv.co.il');
   } catch {
     return false;
+  }
+}
+
+function originFromUrl(urlString) {
+  try {
+    const u = new URL(urlString);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return 'https://www.maariv.co.il';
   }
 }
 
 async function fetchHtml(url) {
   return fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; NewsApp/1.0; ynet-api)',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'he-IL,he;q=0.9',
     },
     cache: 'no-store',
   });
-}
-
-async function fetchRssText(rssUrl) {
-  const res = await fetch(rssUrl, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; NewsApp/1.0)',
-      Accept: 'application/rss+xml, application/xml, text/xml, */*',
-    },
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error(`RSS HTTP ${res.status}`);
-  return res.text();
 }
 
 function normalizeFlashersLimit(raw) {
@@ -73,80 +68,59 @@ function normalizeFlashersLimit(raw) {
 }
 
 /**
- * GET /api/ynet — כותרת ראשית (מהדף הראשי: כותרת, תמונה, קישור לכתבה) + מבזקים (RSS).
+ * GET /api/maariv — כותרת ראשית מדף הבית + מבזקים מ־/breaking-news (HTML).
  *
- * Query:
- *   `flashers`, `homeUrl`, `flashersRssUrl`
- *   `translate` — רשימת קודי שפה מופרדת בפסיקים (ברירת מחדל: en,ar).
- *     דוגמה: `translate=en,ar` או `translate=` לביטול תרגום.
- *     תרגום דרך Google (אנדפוינט לא־רשמי, ללא מפתח) → `hero.titleTranslations` + לכל מבזק `titleTranslations`.
- *   `translateFlashers` — `0` / `false` לביטול תרגום כותרות מבזקים (הכותרת הראשית עדיין מתורגמת אם `translate` פעיל).
- * בסוף הבקשה מתעדכנת שורת `source_key=ynet` ב־`data/DB.csv` (אם השורה קיימת). `meta.dbCsvSynced` / `meta.dbCsvSyncError`.
+ * Query: `homeUrl`, `breakingUrl`, `flashers`, `translate`, `translateFlashers`
+ * בסוף: עדכון שורת `source_key=maariv` ב־`data/DB.csv` (אם קיימת).
  * שמירת CSV: UTF-8 עם BOM (`csvDatabaseWrite.server.js`).
  */
 export async function GET(request) {
   try {
     const { searchParams } = request.nextUrl;
-    const cfg = await getYnetUrlConfig();
 
-    const homeUrl = (searchParams.get('homeUrl') && searchParams.get('homeUrl').trim()) || cfg.siteUrl || DEFAULT_HOME;
-    if (!isYnetHomeUrl(homeUrl)) {
-      return Response.json({ error: 'מותר רק דומיין ynet לדף הבית' }, { status: 400 });
+    const homeUrl = (searchParams.get('homeUrl') && searchParams.get('homeUrl').trim()) || DEFAULT_HOME;
+    const breakingUrl = (searchParams.get('breakingUrl') && searchParams.get('breakingUrl').trim()) || DEFAULT_BREAKING;
+
+    if (!isMaarivHostUrl(homeUrl) || !isMaarivHostUrl(breakingUrl)) {
+      return Response.json({ error: 'מותר רק דומיין maariv ל־homeUrl ו־breakingUrl' }, { status: 400 });
     }
 
-    let flashersRssUrl =
-      (searchParams.get('flashersRssUrl') && searchParams.get('flashersRssUrl').trim()) ||
-      (typeof cfg.flashersRssUrl === 'string' && cfg.flashersRssUrl.trim()) ||
-      '';
-    if (flashersRssUrl && !isAllowedRssHostUrl(flashersRssUrl)) {
-      return Response.json({ error: 'כתובת flashersRssUrl לא מורשית' }, { status: 400 });
-    }
-
+    const baseOrigin = originFromUrl(homeUrl);
     const flashersLimit = normalizeFlashersLimit(searchParams.get('flashers'));
     const translateLangs = parseTranslateLangs(searchParams.get('translate'));
     const translateFlashers = parseTranslateFlashers(searchParams.get('translateFlashers'));
 
-    const [homeRes, rssXml] = await Promise.all([
-      fetchHtml(homeUrl),
-      flashersRssUrl ? fetchRssText(flashersRssUrl).catch((e) => ({ __err: String(e?.message || e) })) : Promise.resolve(null),
-    ]);
+    const [homeRes, breakingRes] = await Promise.all([fetchHtml(homeUrl), fetchHtml(breakingUrl)]);
 
     if (!homeRes.ok) {
       return Response.json({ error: `דף הבית HTTP ${homeRes.status}` }, { status: 502 });
     }
+    if (!breakingRes.ok) {
+      return Response.json({ error: `דף מבזקים HTTP ${breakingRes.status}` }, { status: 502 });
+    }
 
     const homeHtml = await homeRes.text();
+    const breakingHtml = await breakingRes.text();
 
-    const heroResolved = extractYnetHomepageHeroFromHtml(homeHtml);
-
+    const heroResolved = extractMaarivHomepageHeroFromHtml(homeHtml, baseOrigin);
     if (!heroResolved) {
       return Response.json(
-        { error: 'לא נמצאה כותרת שער בדף הבית', homeUrl },
+        { error: 'לא נמצאה כותרת שער (top-maariv) בדף הבית', homeUrl },
         { status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' } }
       );
     }
 
-    let flashers = [];
-    let flashersMeta = { rssUrl: flashersRssUrl || null, error: null };
+    let rawFlashers = extractMaarivBreakingItemsFromHtml(breakingHtml, flashersLimit + 8, baseOrigin);
+    const heroLink = (heroResolved.articleUrl || '').split('#')[0];
+    let flashers = rawFlashers
+      .filter((it) => {
+        const l = (it.articleUrl || '').split('#')[0];
+        if (!heroLink || !l) return true;
+        return l !== heroLink;
+      })
+      .slice(0, flashersLimit);
 
-    if (rssXml && typeof rssXml === 'object' && rssXml.__err) {
-      flashersMeta.error = rssXml.__err;
-    } else if (typeof rssXml === 'string') {
-      const items = parseRssItemsServer(rssXml);
-      const heroLink = (heroResolved.articleUrl || '').split('#')[0];
-      flashers = items
-        .slice(0, flashersLimit + 5)
-        .filter((it) => {
-          const l = (it.link || '').split('#')[0];
-          if (!heroLink || !l) return true;
-          return l !== heroLink;
-        })
-        .slice(0, flashersLimit)
-        .map((it) => ({
-          title: it.title,
-          articleUrl: it.link || null,
-        }));
-    }
+    let flashersMeta = { breakingUrl, error: null };
 
     let titleTranslations = {};
     let translateErrors = {};
@@ -183,7 +157,7 @@ export async function GET(request) {
       }
     }
 
-    const csvPatch = buildYnetDbCsvUpdates({
+    const csvPatch = buildMaarivDbCsvUpdates({
       hero: heroResolved,
       flashers,
       homeUrl,
@@ -194,11 +168,11 @@ export async function GET(request) {
     let dbCsvSynced = false;
     let dbCsvSyncError = null;
     try {
-      await syncYnetRowToDbCsv(csvPatch);
+      await syncMaarivRowToDbCsv(csvPatch);
       dbCsvSynced = true;
     } catch (e) {
       dbCsvSyncError = String(e?.message || e);
-      console.error('api/ynet DB.csv sync:', e);
+      console.error('api/maariv DB.csv sync:', e);
     }
 
     const payload = {
@@ -214,8 +188,8 @@ export async function GET(request) {
       flashers,
       meta: {
         homepageUrl: homeUrl,
+        breakingUrl: flashersMeta.breakingUrl,
         heroImageSource: heroResolved.imageSource,
-        flashersRssUrl: flashersMeta.rssUrl,
         flashersReturned: flashers.length,
         flashersError: flashersMeta.error,
         translateLangs,
@@ -237,7 +211,7 @@ export async function GET(request) {
       },
     });
   } catch (e) {
-    console.error('api/ynet:', e);
+    console.error('api/maariv:', e);
     return Response.json(
       { error: String(e?.message || e) },
       { status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' } }
