@@ -26,7 +26,7 @@ export async function GET() {
 
 export async function POST() {
   return new Response(
-    'DB.csv: קריאה בלבד דרך GET. עדכון שורות ynet/maariv/walla בסוף GET /api/ynet, /api/maariv או /api/walla.',
+    'DB.csv: קריאה בלבד דרך GET. עדכון שורות ynet/maariv/walla/israelhayom בסוף GET /api/ynet, /api/maariv, /api/walla או /api/israelhayom.',
     {
       status: 405,
       headers: { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8' },
