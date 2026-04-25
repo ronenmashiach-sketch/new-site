@@ -23,6 +23,8 @@ export const ALLOWED_RSS_HOST_SUFFIXES = [
   'wafa.ps',
   'hurriyetdailynews.com',
   'jordantimes.com',
+  /** Google News RSS (שימוש פנימי ל־fallback כשאתר המקור חסום). */
+  'news.google.com',
   'sozcu.com.tr',
 ];
 
