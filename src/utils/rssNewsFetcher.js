@@ -58,6 +58,33 @@ function getRSSFeedURL(sourceKey) {
   return RSS_FEEDS[sourceKey];
 }
 
+/** מיפוי תשובת `/api/ahram` או `buildAhramNewsPayload` לשורת נתונים ל־NewsCard. */
+function mapAhramBundleToNewsRow(j, source) {
+  const h = j.hero;
+  const he = h.titleTranslations?.he ?? h.title;
+  const ar = h.titleTranslations?.ar ?? h.title;
+  const subHe = h.subTitleTranslations?.he ?? h.subTitle ?? '';
+  const subAr = h.subTitleTranslations?.ar ?? h.subTitle ?? '';
+  const subEn = h.subTitle || '';
+  return {
+    main_headline_en: h.title,
+    main_headline_he: he,
+    main_headline_ar: ar,
+    image_headline_en: subEn,
+    image_headline_he: subHe || he,
+    image_headline_ar: subAr || ar,
+    image_url: h.imageUrl || null,
+    flashers_en: j.flashers.map((f) => f.title),
+    flashers_he: j.flashers.map((f) => f.titleTranslations?.he ?? f.title),
+    flashers_ar: j.flashers.map((f) => f.titleTranslations?.ar ?? f.title),
+    source_key: source.key,
+    source_name: source.name,
+    source_url: source.url,
+    country: source.country,
+    last_fetched: new Date().toISOString(),
+  };
+}
+
 /**
  * In the browser, cross-origin RSS requests are blocked (CORS). Use our API proxy.
  * On the server (e.g. update-news route), fetch the feed directly.
@@ -105,6 +132,32 @@ export async function fetchNewsFromRSS(source) {
       if (typeof ynetCfg.flashersRssUrl === 'string' && ynetCfg.flashersRssUrl.trim()) {
         ynetFlashersRssUrl = ynetCfg.flashersRssUrl.trim();
       }
+    }
+
+    if (source.key === 'ahram') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/ahram?translate=he,ar&translateFlashers=1', { cache: 'no-store' });
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errJ = await res.json();
+            if (errJ.error) detail = errJ.error;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(`Ahram API: ${detail}`);
+        }
+        const j = await res.json();
+        return mapAhramBundleToNewsRow(j, source);
+      }
+      const { buildAhramNewsPayload } = await import('@/utils/ahramNewsPayload.js');
+      const bundle = await buildAhramNewsPayload({
+        homeUrl: source.url.endsWith('/') ? source.url : `${source.url}/`,
+        flashersLimit: 40,
+        translateLangs: ['he', 'ar'],
+        translateFlashers: true,
+      });
+      return mapAhramBundleToNewsRow(bundle, source);
     }
 
     if (!rssUrl) {
@@ -169,6 +222,30 @@ export async function fetchNewsFromRSS(source) {
 // Test RSS feed availability
 export async function testRSSFeed(sourceKey) {
   try {
+    if (sourceKey === 'ahram') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/ahram?translate=he,ar', { cache: 'no-store' });
+        if (!res.ok) return { available: false, error: `HTTP ${res.status}` };
+        const j = await res.json();
+        return {
+          available: true,
+          itemCount: (j.flashers && j.flashers.length) || 0,
+          latestTitle: j.hero?.title || 'No title',
+        };
+      }
+      const { buildAhramNewsPayload } = await import('@/utils/ahramNewsPayload.js');
+      const j = await buildAhramNewsPayload({
+        flashersLimit: 40,
+        translateLangs: ['he', 'ar'],
+        translateFlashers: false,
+      });
+      return {
+        available: true,
+        itemCount: j.flashers.length,
+        latestTitle: j.hero.title || 'No title',
+      };
+    }
+
     let rssUrl = getRSSFeedURL(sourceKey);
     if (sourceKey === 'ynet') {
       const ynetCfg = await getYnetUrlConfig();
