@@ -49,7 +49,7 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Fetch news from RSS. DB.csv מתעדכן מ־`/api/ynet`, `/api/maariv`, `/api/walla`, `/api/israelhayom` (לא מהדף).
+  // Fetch news from RSS. DB.csv מתעדכן מ־`/api/ynet`, `/api/maariv`, `/api/walla`, `/api/israelhayom`, `/api/hurriyet` (לא מהדף).
   const fetchSource = useCallback(async (source) => {
     const { fetchNewsFromRSS } = await import("@/utils/rssNewsFetcher");
     return await fetchNewsFromRSS(source);
