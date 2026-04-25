@@ -1,4 +1,4 @@
-// CSV "database": file at data/DB.csv. קריאה בדפדפן ובשרת; כתיבה לדיסק מ־`csvDatabaseWrite.server.js` (GET `/api/ynet` או `/api/maariv`).
+// CSV "database": file at data/DB.csv. קריאה בדפדפן ובשרת; כתיבה לדיסק מ־`csvDatabaseWrite.server.js` (GET `/api/ynet`, `/api/maariv` או `/api/walla`).
 const CSV_API_PATH = '/api/csv';
 
 /** Stable column order (matches Base44 / NewsSource export). */
