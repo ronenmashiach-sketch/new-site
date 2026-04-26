@@ -59,6 +59,33 @@ function getRSSFeedURL(sourceKey) {
 }
 
 /** מיפוי תשובת `/api/ahram` או `buildAhramNewsPayload` לשורת נתונים ל־NewsCard. */
+function mapAawsatBundleToNewsRow(j, source) {
+  const h = j.hero;
+  const ar = h.title;
+  const he = h.titleTranslations?.he ?? ar;
+  const en = h.titleTranslations?.en ?? '';
+  const subAr = h.subTitle || '';
+  const subHe = h.subTitleTranslations?.he ?? '';
+  const subEn = h.subTitleTranslations?.en ?? '';
+  return {
+    main_headline_ar: ar,
+    main_headline_he: he,
+    main_headline_en: en,
+    image_headline_ar: subAr,
+    image_headline_he: subHe || he,
+    image_headline_en: subEn || en,
+    image_url: h.imageUrl || null,
+    flashers_ar: j.flashers.map((f) => f.title),
+    flashers_he: j.flashers.map((f) => f.titleTranslations?.he ?? f.title),
+    flashers_en: j.flashers.map((f) => f.titleTranslations?.en ?? f.title),
+    source_key: source.key,
+    source_name: source.name,
+    source_url: source.url,
+    country: source.country,
+    last_fetched: new Date().toISOString(),
+  };
+}
+
 function mapAhramBundleToNewsRow(j, source) {
   const h = j.hero;
   const he = h.titleTranslations?.he ?? h.title;
@@ -132,6 +159,32 @@ export async function fetchNewsFromRSS(source) {
       if (typeof ynetCfg.flashersRssUrl === 'string' && ynetCfg.flashersRssUrl.trim()) {
         ynetFlashersRssUrl = ynetCfg.flashersRssUrl.trim();
       }
+    }
+
+    if (source.key === 'aawsat') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/aawsat?translate=he,en&translateFlashers=1', { cache: 'no-store' });
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errJ = await res.json();
+            if (errJ.error) detail = errJ.error;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(`Aawsat API: ${detail}`);
+        }
+        const j = await res.json();
+        return mapAawsatBundleToNewsRow(j, source);
+      }
+      const { buildAawsatNewsPayload } = await import('@/utils/aawsatNewsPayload.js');
+      const bundle = await buildAawsatNewsPayload({
+        homeUrl: source.url.endsWith('/') ? source.url : `${source.url}/`,
+        flashersLimit: 40,
+        translateLangs: ['he', 'en'],
+        translateFlashers: true,
+      });
+      return mapAawsatBundleToNewsRow(bundle, source);
     }
 
     if (source.key === 'ahram') {
@@ -222,6 +275,34 @@ export async function fetchNewsFromRSS(source) {
 // Test RSS feed availability
 export async function testRSSFeed(sourceKey) {
   try {
+    if (sourceKey === 'aawsat') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/aawsat?translate=he,en', { cache: 'no-store' });
+        if (!res.ok) return { available: false, error: `HTTP ${res.status}` };
+        const j = await res.json();
+        return {
+          available: true,
+          itemCount: (j.flashers && j.flashers.length) || 0,
+          latestTitle: j.hero?.title || 'No title',
+        };
+      }
+      const { buildAawsatNewsPayload } = await import('@/utils/aawsatNewsPayload.js');
+      try {
+        const j = await buildAawsatNewsPayload({
+          flashersLimit: 40,
+          translateLangs: ['he', 'en'],
+          translateFlashers: false,
+        });
+        return {
+          available: true,
+          itemCount: j.flashers.length,
+          latestTitle: j.hero.title || 'No title',
+        };
+      } catch (e) {
+        return { available: false, error: e.message };
+      }
+    }
+
     if (sourceKey === 'ahram') {
       if (typeof window !== 'undefined') {
         const res = await fetch('/api/ahram?translate=he,ar', { cache: 'no-store' });
