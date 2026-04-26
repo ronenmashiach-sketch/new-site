@@ -47,7 +47,7 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Fetch news from RSS/API. DB.csv מתעדכן מ־`/api/ynet`, `/api/maariv`, `/api/walla`, `/api/israelhayom`, `/api/hurriyet`, `/api/jordantimes`, `/api/ahram`, `/api/aawsat`, `/api/national`, `/api/gulfnews`, `/api/moroccoworldnews` (לא מהדף).
+  // Fetch news from RSS/API. DB.csv מתעדכן מ־`/api/ynet`, `/api/maariv`, `/api/walla`, `/api/israelhayom`, `/api/hurriyet`, `/api/jordantimes`, `/api/ahram`, `/api/aawsat`, `/api/national`, `/api/gulfnews`, `/api/moroccoworldnews`, `/api/sana` (לא מהדף).
   const fetchSource = useCallback(async (source) => {
     const { fetchNewsFromRSS } = await import("@/utils/rssNewsFetcher");
     return await fetchNewsFromRSS(source);
