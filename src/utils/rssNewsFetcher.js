@@ -243,6 +243,32 @@ export async function fetchNewsFromRSS(source) {
       return mapGulfNewsBundleToNewsRow(bundle, source);
     }
 
+    if (source.key === 'morocco_world') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/moroccoworldnews?translate=he,ar&translateFlashers=1', { cache: 'no-store' });
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errJ = await res.json();
+            if (errJ.error) detail = errJ.error;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(`Morocco World News API: ${detail}`);
+        }
+        const j = await res.json();
+        return mapNationalBundleToNewsRow(j, source);
+      }
+      const { buildMoroccoWorldNewsPayload } = await import('@/utils/moroccoWorldNewsPayload.js');
+      const bundle = await buildMoroccoWorldNewsPayload({
+        homeUrl: source.url.endsWith('/') ? source.url : `${source.url}/`,
+        flashersLimit: 40,
+        translateLangs: ['he', 'ar'],
+        translateFlashers: true,
+      });
+      return mapNationalBundleToNewsRow(bundle, source);
+    }
+
     if (source.key === 'aawsat') {
       if (typeof window !== 'undefined') {
         const res = await fetch('/api/aawsat?translate=he,en&translateFlashers=1', { cache: 'no-store' });
@@ -399,6 +425,34 @@ export async function testRSSFeed(sourceKey) {
       const { buildGulfNewsPayload } = await import('@/utils/gulfNewsPayload.js');
       try {
         const j = await buildGulfNewsPayload({
+          flashersLimit: 40,
+          translateLangs: ['he', 'ar'],
+          translateFlashers: false,
+        });
+        return {
+          available: true,
+          itemCount: j.flashers.length,
+          latestTitle: j.hero.title || 'No title',
+        };
+      } catch (e) {
+        return { available: false, error: e.message };
+      }
+    }
+
+    if (sourceKey === 'morocco_world') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/moroccoworldnews?translate=he,ar', { cache: 'no-store' });
+        if (!res.ok) return { available: false, error: `HTTP ${res.status}` };
+        const j = await res.json();
+        return {
+          available: true,
+          itemCount: (j.flashers && j.flashers.length) || 0,
+          latestTitle: j.hero?.title || 'No title',
+        };
+      }
+      const { buildMoroccoWorldNewsPayload } = await import('@/utils/moroccoWorldNewsPayload.js');
+      try {
+        const j = await buildMoroccoWorldNewsPayload({
           flashersLimit: 40,
           translateLangs: ['he', 'ar'],
           translateFlashers: false,
