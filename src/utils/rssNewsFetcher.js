@@ -86,6 +86,32 @@ function mapAawsatBundleToNewsRow(j, source) {
   };
 }
 
+function mapNationalBundleToNewsRow(j, source) {
+  const h = j.hero;
+  const he = h.titleTranslations?.he ?? h.title;
+  const ar = h.titleTranslations?.ar ?? h.title;
+  const subEn = h.subTitle || '';
+  const subHe = h.subTitleTranslations?.he ?? '';
+  const subAr = h.subTitleTranslations?.ar ?? '';
+  return {
+    main_headline_en: h.title,
+    main_headline_he: he,
+    main_headline_ar: ar,
+    image_headline_en: subEn,
+    image_headline_he: subHe || he,
+    image_headline_ar: subAr || ar,
+    image_url: h.imageUrl || null,
+    flashers_en: j.flashers.map((f) => f.title),
+    flashers_he: j.flashers.map((f) => f.titleTranslations?.he ?? f.title),
+    flashers_ar: j.flashers.map((f) => f.titleTranslations?.ar ?? f.title),
+    source_key: source.key,
+    source_name: source.name,
+    source_url: source.url,
+    country: source.country,
+    last_fetched: new Date().toISOString(),
+  };
+}
+
 function mapAhramBundleToNewsRow(j, source) {
   const h = j.hero;
   const he = h.titleTranslations?.he ?? h.title;
@@ -159,6 +185,32 @@ export async function fetchNewsFromRSS(source) {
       if (typeof ynetCfg.flashersRssUrl === 'string' && ynetCfg.flashersRssUrl.trim()) {
         ynetFlashersRssUrl = ynetCfg.flashersRssUrl.trim();
       }
+    }
+
+    if (source.key === 'national') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/national?translate=he,ar&translateFlashers=1', { cache: 'no-store' });
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errJ = await res.json();
+            if (errJ.error) detail = errJ.error;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(`National API: ${detail}`);
+        }
+        const j = await res.json();
+        return mapNationalBundleToNewsRow(j, source);
+      }
+      const { buildNationalNewsPayload } = await import('@/utils/nationalNewsPayload.js');
+      const bundle = await buildNationalNewsPayload({
+        homeUrl: source.url.endsWith('/') ? source.url : `${source.url}/`,
+        flashersLimit: 40,
+        translateLangs: ['he', 'ar'],
+        translateFlashers: true,
+      });
+      return mapNationalBundleToNewsRow(bundle, source);
     }
 
     if (source.key === 'aawsat') {
@@ -275,6 +327,34 @@ export async function fetchNewsFromRSS(source) {
 // Test RSS feed availability
 export async function testRSSFeed(sourceKey) {
   try {
+    if (sourceKey === 'national') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/national?translate=he,ar', { cache: 'no-store' });
+        if (!res.ok) return { available: false, error: `HTTP ${res.status}` };
+        const j = await res.json();
+        return {
+          available: true,
+          itemCount: (j.flashers && j.flashers.length) || 0,
+          latestTitle: j.hero?.title || 'No title',
+        };
+      }
+      const { buildNationalNewsPayload } = await import('@/utils/nationalNewsPayload.js');
+      try {
+        const j = await buildNationalNewsPayload({
+          flashersLimit: 40,
+          translateLangs: ['he', 'ar'],
+          translateFlashers: false,
+        });
+        return {
+          available: true,
+          itemCount: j.flashers.length,
+          latestTitle: j.hero.title || 'No title',
+        };
+      } catch (e) {
+        return { available: false, error: e.message };
+      }
+    }
+
     if (sourceKey === 'aawsat') {
       if (typeof window !== 'undefined') {
         const res = await fetch('/api/aawsat?translate=he,en', { cache: 'no-store' });
