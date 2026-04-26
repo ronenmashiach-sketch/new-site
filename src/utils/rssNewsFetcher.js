@@ -112,6 +112,10 @@ function mapNationalBundleToNewsRow(j, source) {
   };
 }
 
+function mapGulfNewsBundleToNewsRow(j, source) {
+  return mapNationalBundleToNewsRow(j, source);
+}
+
 function mapAhramBundleToNewsRow(j, source) {
   const h = j.hero;
   const he = h.titleTranslations?.he ?? h.title;
@@ -211,6 +215,32 @@ export async function fetchNewsFromRSS(source) {
         translateFlashers: true,
       });
       return mapNationalBundleToNewsRow(bundle, source);
+    }
+
+    if (source.key === 'gulf_news') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/gulfnews?translate=he,ar&translateFlashers=1', { cache: 'no-store' });
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errJ = await res.json();
+            if (errJ.error) detail = errJ.error;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(`Gulf News API: ${detail}`);
+        }
+        const j = await res.json();
+        return mapGulfNewsBundleToNewsRow(j, source);
+      }
+      const { buildGulfNewsPayload } = await import('@/utils/gulfNewsPayload.js');
+      const bundle = await buildGulfNewsPayload({
+        homeUrl: source.url.endsWith('/') ? source.url : `${source.url}/`,
+        flashersLimit: 40,
+        translateLangs: ['he', 'ar'],
+        translateFlashers: true,
+      });
+      return mapGulfNewsBundleToNewsRow(bundle, source);
     }
 
     if (source.key === 'aawsat') {
@@ -341,6 +371,34 @@ export async function testRSSFeed(sourceKey) {
       const { buildNationalNewsPayload } = await import('@/utils/nationalNewsPayload.js');
       try {
         const j = await buildNationalNewsPayload({
+          flashersLimit: 40,
+          translateLangs: ['he', 'ar'],
+          translateFlashers: false,
+        });
+        return {
+          available: true,
+          itemCount: j.flashers.length,
+          latestTitle: j.hero.title || 'No title',
+        };
+      } catch (e) {
+        return { available: false, error: e.message };
+      }
+    }
+
+    if (sourceKey === 'gulf_news') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/gulfnews?translate=he,ar', { cache: 'no-store' });
+        if (!res.ok) return { available: false, error: `HTTP ${res.status}` };
+        const j = await res.json();
+        return {
+          available: true,
+          itemCount: (j.flashers && j.flashers.length) || 0,
+          latestTitle: j.hero?.title || 'No title',
+        };
+      }
+      const { buildGulfNewsPayload } = await import('@/utils/gulfNewsPayload.js');
+      try {
+        const j = await buildGulfNewsPayload({
           flashersLimit: 40,
           translateLangs: ['he', 'ar'],
           translateFlashers: false,
