@@ -143,6 +143,33 @@ function mapSanaBundleToNewsRow(j, source) {
   };
 }
 
+function mapWafaBundleToNewsRow(j, source) {
+  const h = j.hero;
+  const ar = h.title;
+  const he = h.titleTranslations?.he ?? '';
+  const en = (h.titleTranslations?.en && String(h.titleTranslations.en).trim()) || '';
+  const subAr = h.subTitle || '';
+  const subHe = h.subTitleTranslations?.he ?? '';
+  const subEn = (h.subTitleTranslations?.en && String(h.subTitleTranslations.en).trim()) || '';
+  return {
+    main_headline_ar: ar,
+    main_headline_he: he || ar,
+    main_headline_en: en,
+    image_headline_ar: subAr,
+    image_headline_he: subHe || subAr,
+    image_headline_en: subEn,
+    image_url: h.imageUrl || null,
+    flashers_ar: j.flashers.map((f) => f.title),
+    flashers_he: j.flashers.map((f) => f.titleTranslations?.he ?? f.title),
+    flashers_en: j.flashers.map((f) => f.titleTranslations?.en ?? f.title),
+    source_key: source.key,
+    source_name: source.name,
+    source_url: source.url,
+    country: source.country,
+    last_fetched: new Date().toISOString(),
+  };
+}
+
 function mapAhramBundleToNewsRow(j, source) {
   const h = j.hero;
   const he = h.titleTranslations?.he ?? h.title;
@@ -320,6 +347,30 @@ export async function fetchNewsFromRSS(source) {
         translateFlashers: true,
       });
       return mapSanaBundleToNewsRow(bundle, source);
+    }
+
+    if (source.key === 'wafa') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/wafa', { cache: 'no-store' });
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errJ = await res.json();
+            if (errJ.error) detail = errJ.error;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(`WAFA API: ${detail}`);
+        }
+        const j = await res.json();
+        return mapWafaBundleToNewsRow(j, source);
+      }
+      const { buildWafaNewsPayload } = await import('@/utils/wafaNewsPayload.js');
+      const bundle = await buildWafaNewsPayload({
+        homeUrlAr: source.url.endsWith('/') ? source.url : `${source.url}/`,
+        flashersLimit: 40,
+      });
+      return mapWafaBundleToNewsRow(bundle, source);
     }
 
     if (source.key === 'aawsat') {
@@ -538,6 +589,30 @@ export async function testRSSFeed(sourceKey) {
           translateLangs: ['he'],
           translateFlashers: false,
         });
+        return {
+          available: true,
+          itemCount: j.flashers.length,
+          latestTitle: j.hero.title || 'No title',
+        };
+      } catch (e) {
+        return { available: false, error: e.message };
+      }
+    }
+
+    if (sourceKey === 'wafa') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/wafa', { cache: 'no-store' });
+        if (!res.ok) return { available: false, error: `HTTP ${res.status}` };
+        const j = await res.json();
+        return {
+          available: true,
+          itemCount: (j.flashers && j.flashers.length) || 0,
+          latestTitle: j.hero?.title || 'No title',
+        };
+      }
+      const { buildWafaNewsPayload } = await import('@/utils/wafaNewsPayload.js');
+      try {
+        const j = await buildWafaNewsPayload({ flashersLimit: 40 });
         return {
           available: true,
           itemCount: j.flashers.length,

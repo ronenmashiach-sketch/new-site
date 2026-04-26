@@ -16,7 +16,7 @@ export const NEWS_SOURCES = [
   { key: "morocco_world", name: "Morocco World News", url: "https://www.moroccoworldnews.com", country: "MA", flag: "🇲🇦" },
   { key: "daily_star", name: "Daily Star Lebanon", url: "https://www.dailystar.com.lb", country: "LB", flag: "🇱🇧" },
   { key: "sana", name: "SANA", url: "https://sana.sy", country: "SY", flag: "🇸🇾" },
-  { key: "wafa", name: "WAFA", url: "https://english.wafa.ps", country: "PS", flag: "🇵🇸" },
+  { key: "wafa", name: "WAFA", url: "https://www.wafa.ps", country: "PS", flag: "🇵🇸" },
   { key: "cnn", name: "CNN", url: "https://edition.cnn.com", country: "US", flag: "🇺🇸" },
   { key: "bbc", name: "BBC News", url: "https://www.bbc.com/news", country: "GB", flag: "🇬🇧" },
   { key: "foxnews", name: "Fox News", url: "https://www.foxnews.com", country: "US", flag: "🇺🇸" },
