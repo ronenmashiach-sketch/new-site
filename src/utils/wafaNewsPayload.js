@@ -1,10 +1,12 @@
 /**
- * WAFA — ערבית מ־www.wafa.ps, עברית מ־hebrew.wafa.ps (מהתפריט הרשמי של אתר הערבית),
- * אנגלית מ־english.wafa.ps. התאמה לפי סדר הקרוסלה / רשימת "אחרונים" (אין מזהה משותף בין השפות).
+ * WAFA — כותרות וקישורים מ־www.wafa.ps (ערבית). עברית ואנגלית: תרגום מכונה מערבית (Google לא רשמי),
+ * כי רשימות "אחרונים" באנגלית/עברית באורך ובסדר שונים — אי־אפשר ליישר לפי אינדקס מול הערבית.
  *
  * כותרות דמוי Chrome (Accept, Referer, sec-ch-ua, sec-fetch-*). אופציונלי: `WAFA_COOKIE` מסביבה.
  * זיהוי Cloudflare: לא מספיק המחרוזת "cloudflare" (מופיעה ב־cdnjs.cloudflare.com וכו').
  */
+
+import { translateManyStrings, translateOneToMany } from '@/utils/googleTranslate';
 
 const ENTITY_MAP = {
   amp: '&',
@@ -199,7 +201,16 @@ async function fetchHomepageHtml(url) {
   return res.text();
 }
 
-/** @typedef {{ homeUrlAr?: string, homeUrlHe?: string, homeUrlEn?: string, flashersLimit?: number }} WafaNewsPayloadOptions */
+/**
+ * @typedef {{
+ *   homeUrlAr?: string,
+ *   homeUrlHe?: string,
+ *   homeUrlEn?: string,
+ *   flashersLimit?: number,
+ *   translateLangs?: string[],
+ *   translateFlashers?: boolean,
+ * }} WafaNewsPayloadOptions
+ */
 
 /**
  * @param {WafaNewsPayloadOptions=} opts
@@ -209,59 +220,72 @@ export async function buildWafaNewsPayload(opts = {}) {
   const homeUrlHe = (opts.homeUrlHe && String(opts.homeUrlHe).trim()) || WAFA_HE_HOME_URL;
   const homeUrlEn = (opts.homeUrlEn && String(opts.homeUrlEn).trim()) || WAFA_EN_HOME_URL;
   const limit = Math.min(120, Math.max(0, Number(opts.flashersLimit) || 40));
+  const translateLangs = Array.isArray(opts.translateLangs) ? opts.translateLangs : ['he', 'en'];
+  const translateFlashers = opts.translateFlashers !== false;
+  const wantsHe = translateLangs.includes('he');
+  const wantsEn = translateLangs.includes('en');
+  const tlTargets = [...(wantsHe ? ['he'] : []), ...(wantsEn ? ['en'] : [])];
 
   const htmlAr = await fetchHomepageHtml(homeUrlAr.endsWith('/') ? homeUrlAr : `${homeUrlAr}/`);
   if (looksLikeCloudflareBlock(htmlAr)) throw new Error('Cloudflare block on WAFA Arabic homepage');
 
-  let htmlHe = '';
-  let htmlEn = '';
-  try {
-    htmlHe = await fetchHomepageHtml(homeUrlHe.endsWith('/') ? homeUrlHe : `${homeUrlHe}/`);
-  } catch {
-    /* optional */
-  }
-  try {
-    htmlEn = await fetchHomepageHtml(homeUrlEn.endsWith('/') ? homeUrlEn : `${homeUrlEn}/`);
-  } catch {
-    /* optional */
-  }
-
   const slidesAr = extractWafaCarouselSlides(htmlAr, homeUrlAr);
-  const slidesHe = htmlHe ? extractWafaCarouselSlides(htmlHe, homeUrlHe) : [];
-  const slidesEn = htmlEn ? extractWafaCarouselSlides(htmlEn, homeUrlEn) : [];
-
   if (!slidesAr.length) throw new Error('לא נמצאו סליידים בקרוסלת WAFA (ערבית)');
 
   const heroAr = slidesAr[0];
-  const heroHe = slidesHe[0] || null;
-  const heroEn = slidesEn[0] || null;
 
   const hero = {
     title: heroAr.title,
     fullTitle: heroAr.title,
-    titleTranslations: {
-      he: heroHe?.title || '',
-      en: heroEn?.title || '',
-    },
+    titleTranslations: { he: '', en: '' },
     subTitle: '',
     subTitleTranslations: { he: '', en: '' },
     imageUrl: heroAr.imageUrl || '',
     articleUrl: heroAr.articleUrl,
   };
 
-  const latestAr = extractWafaLatestNews(htmlAr, homeUrlAr, limit);
-  const latestHe = htmlHe ? extractWafaLatestNews(htmlHe, homeUrlHe, limit) : [];
-  const latestEn = htmlEn ? extractWafaLatestNews(htmlEn, homeUrlEn, limit) : [];
+  let heroTranslateErrors = {};
+  if (tlTargets.length && String(hero.title || '').trim()) {
+    try {
+      const tr = await translateOneToMany(hero.title, { from: 'ar', to: tlTargets });
+      if (wantsHe) hero.titleTranslations.he = tr.translations?.he || '';
+      if (wantsEn) hero.titleTranslations.en = tr.translations?.en || '';
+      heroTranslateErrors = tr.errors || {};
+    } catch (e) {
+      heroTranslateErrors = { _all: String(e?.message || e) };
+    }
+  }
 
-  const flashers = latestAr.map((row, i) => ({
+  const latestAr = extractWafaLatestNews(htmlAr, homeUrlAr, limit);
+
+  let flashers = latestAr.map((row) => ({
     title: row.title,
     articleUrl: row.articleUrl,
     imageUrl: row.imageUrl || null,
-    titleTranslations: {
-      he: latestHe[i]?.title || '',
-      en: latestEn[i]?.title || '',
-    },
+    titleTranslations: { he: '', en: '' },
   }));
+
+  let flashersTranslateErrorsSample = [];
+  if (tlTargets.length && translateFlashers && flashers.length) {
+    const titles = flashers.map((f) => f.title);
+    const { map, errors } = await translateManyStrings(titles, {
+      from: 'ar',
+      to: tlTargets,
+      concurrency: 5,
+    });
+    flashers = flashers.map((f) => {
+      const key = String(f.title || '').trim();
+      const row = map.get(key) || {};
+      return {
+        ...f,
+        titleTranslations: {
+          he: wantsHe ? row.he ?? '' : '',
+          en: wantsEn ? row.en ?? '' : '',
+        },
+      };
+    });
+    flashersTranslateErrorsSample = errors.slice(0, 8);
+  }
 
   return {
     hero,
@@ -270,10 +294,15 @@ export async function buildWafaNewsPayload(opts = {}) {
       homepageUrl: homeUrlAr,
       homepageHeUrl: homeUrlHe,
       homepageEnUrl: homeUrlEn,
-      hebrewHomeFetched: Boolean(htmlHe && slidesHe.length),
-      englishHomeFetched: Boolean(htmlEn && slidesEn.length),
-      flashersSource: 'latest_news_ar_he_en_slot',
+      flashersSource: 'latest_news_ar_plus_translate_he_en',
       flashersReturned: flashers.length,
+      translateLangs: tlTargets,
+      translateFlashers: Boolean(tlTargets.length && translateFlashers),
+      translateProvider: tlTargets.length ? 'google_unofficial' : null,
+      heroTranslateErrors,
+      flashersTranslateErrorsSample,
+      noteArHeEnLists:
+        'רשימות אחרונים באנגלית/עברית שונות באורך ובסדר מול הערבית; he/en מגיעים מתרגום מערבית.',
     },
   };
 }

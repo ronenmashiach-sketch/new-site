@@ -9,6 +9,27 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+const DEFAULT_TRANSLATE_LANGS = ['he', 'en'];
+const ALLOWED_TRANSLATE_LANGS = new Set(['he', 'en', 'ar']);
+
+function parseTranslateLangs(raw) {
+  if (raw === null || raw === undefined) return DEFAULT_TRANSLATE_LANGS;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return [];
+  return trimmed
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => ALLOWED_TRANSLATE_LANGS.has(s));
+}
+
+function parseTranslateFlashers(raw) {
+  if (raw === null || raw === undefined) return true;
+  const v = String(raw).trim().toLowerCase();
+  if (v === '' || v === '1' || v === 'true' || v === 'yes') return true;
+  if (v === '0' || v === 'false' || v === 'no') return false;
+  return true;
+}
+
 function normalizeFlashersLimit(raw) {
   const DEFAULT = 40;
   const MAX = 120;
@@ -54,7 +75,8 @@ function buildFromCachedDbRow(row) {
 }
 
 /**
- * GET /api/wafa — ערבית מ־homeUrlAr (ברירת מחדל www.wafa.ps), עברית מ־homeUrlHe (hebrew.wafa.ps), אנגלית מ־homeUrlEn (english.wafa.ps).
+ * GET /api/wafa — ערבית מ־homeUrlAr; עברית/אנגלית מתרגום מערבית (ברירת מחדל translate=he,en).
+ * פרמטרים: translate, translateFlashers, flashers, useDbFallback, homeUrlAr / homeUrlHe / homeUrlEn (למטא בלבד).
  */
 export async function GET(request) {
   try {
@@ -70,6 +92,8 @@ export async function GET(request) {
       return Response.json({ error: 'מותר רק דומיין wafa.ps ל־homeUrlAr / homeUrlHe / homeUrlEn' }, { status: 400 });
     }
 
+    const translateLangs = parseTranslateLangs(searchParams.get('translate'));
+    const translateFlashers = parseTranslateFlashers(searchParams.get('translateFlashers'));
     const flashersLimit = normalizeFlashersLimit(searchParams.get('flashers'));
     const useDbFallback = (() => {
       const v = String(searchParams.get('useDbFallback') || '').trim().toLowerCase();
@@ -86,6 +110,8 @@ export async function GET(request) {
         homeUrlHe,
         homeUrlEn,
         flashersLimit,
+        translateLangs,
+        translateFlashers,
       });
       hero = bundle.hero;
       flashers = bundle.flashers;

@@ -160,8 +160,8 @@ function mapWafaBundleToNewsRow(j, source) {
     image_headline_en: subEn,
     image_url: h.imageUrl || null,
     flashers_ar: j.flashers.map((f) => f.title),
-    flashers_he: j.flashers.map((f) => f.titleTranslations?.he ?? f.title),
-    flashers_en: j.flashers.map((f) => f.titleTranslations?.en ?? f.title),
+    flashers_he: j.flashers.map((f) => f.titleTranslations?.he ?? ''),
+    flashers_en: j.flashers.map((f) => f.titleTranslations?.en ?? ''),
     source_key: source.key,
     source_name: source.name,
     source_url: source.url,
@@ -351,7 +351,7 @@ export async function fetchNewsFromRSS(source) {
 
     if (source.key === 'wafa') {
       if (typeof window !== 'undefined') {
-        const res = await fetch('/api/wafa', { cache: 'no-store' });
+        const res = await fetch('/api/wafa?translate=he,en&translateFlashers=1', { cache: 'no-store' });
         if (!res.ok) {
           let detail = `HTTP ${res.status}`;
           try {
@@ -369,6 +369,8 @@ export async function fetchNewsFromRSS(source) {
       const bundle = await buildWafaNewsPayload({
         homeUrlAr: source.url.endsWith('/') ? source.url : `${source.url}/`,
         flashersLimit: 40,
+        translateLangs: ['he', 'en'],
+        translateFlashers: true,
       });
       return mapWafaBundleToNewsRow(bundle, source);
     }
@@ -601,7 +603,7 @@ export async function testRSSFeed(sourceKey) {
 
     if (sourceKey === 'wafa') {
       if (typeof window !== 'undefined') {
-        const res = await fetch('/api/wafa', { cache: 'no-store' });
+        const res = await fetch('/api/wafa?translate=he,en&translateFlashers=1', { cache: 'no-store' });
         if (!res.ok) return { available: false, error: `HTTP ${res.status}` };
         const j = await res.json();
         return {
@@ -612,7 +614,11 @@ export async function testRSSFeed(sourceKey) {
       }
       const { buildWafaNewsPayload } = await import('@/utils/wafaNewsPayload.js');
       try {
-        const j = await buildWafaNewsPayload({ flashersLimit: 40 });
+        const j = await buildWafaNewsPayload({
+          flashersLimit: 40,
+          translateLangs: ['he', 'en'],
+          translateFlashers: true,
+        });
         return {
           available: true,
           itemCount: j.flashers.length,
