@@ -197,6 +197,33 @@ function mapBbcBundleToNewsRow(j, source) {
   };
 }
 
+function mapFoxBundleToNewsRow(j, source) {
+  const h = j.hero;
+  const en = h.title;
+  const he = h.titleTranslations?.he ?? '';
+  const ar = h.titleTranslations?.ar ?? '';
+  const subEn = h.subTitle || '';
+  const subHe = h.subTitleTranslations?.he ?? '';
+  const subAr = h.subTitleTranslations?.ar ?? '';
+  return {
+    main_headline_en: en,
+    main_headline_he: he || en,
+    main_headline_ar: ar || en,
+    image_headline_en: subEn,
+    image_headline_he: subHe || subEn,
+    image_headline_ar: subAr || subEn,
+    image_url: h.imageUrl || null,
+    flashers_en: j.flashers.map((f) => f.title),
+    flashers_he: j.flashers.map((f) => f.titleTranslations?.he ?? ''),
+    flashers_ar: j.flashers.map((f) => f.titleTranslations?.ar ?? ''),
+    source_key: source.key,
+    source_name: source.name,
+    source_url: source.url,
+    country: source.country,
+    last_fetched: new Date().toISOString(),
+  };
+}
+
 function mapWafaBundleToNewsRow(j, source) {
   const h = j.hero;
   const ar = h.title;
@@ -480,6 +507,33 @@ export async function fetchNewsFromRSS(source) {
         translateFlashers: true,
       });
       return mapBbcBundleToNewsRow(bundle, source);
+    }
+
+    if (source.key === 'foxnews') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/foxnews?translate=he,ar&translateFlashers=1', { cache: 'no-store' });
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errJ = await res.json();
+            if (errJ.error) detail = errJ.error;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(`Fox News API: ${detail}`);
+        }
+        const j = await res.json();
+        return mapFoxBundleToNewsRow(j, source);
+      }
+      const { buildFoxNewsPayload } = await import('@/utils/foxNewsPayload.js');
+      const bundle = await buildFoxNewsPayload({
+        homeUrl: 'https://www.foxnews.com/',
+        rssUrl: 'https://moxie.foxnews.com/google-publisher/latest.xml',
+        flashersLimit: 40,
+        translateLangs: ['he', 'ar'],
+        translateFlashers: true,
+      });
+      return mapFoxBundleToNewsRow(bundle, source);
     }
 
     if (source.key === 'aawsat') {
