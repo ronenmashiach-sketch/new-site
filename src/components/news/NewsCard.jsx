@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { ExternalLink } from "lucide-react";
 import FlasherTicker from "./FlasherTicker";
+import { plainTextFromRssHtml } from "@/utils/rssParseServer";
 
 export default function NewsCard({ source, data, lang, index }) {
   const [heroImageFailed, setHeroImageFailed] = useState(false);
   const mainHeadline = data?.[`main_headline_${lang}`] || null;
-  const imageHeadline = data?.[`image_headline_${lang}`] || null;
+  const imageHeadlineRaw = data?.[`image_headline_${lang}`] || null;
+  const imageHeadline =
+    imageHeadlineRaw && String(imageHeadlineRaw).trim()
+      ? plainTextFromRssHtml(String(imageHeadlineRaw)) || null
+      : null;
   const imageUrl = data?.image_url || null;
   const flashers = data?.[`flashers_${lang}`] || [];
   const isLoading = !data;

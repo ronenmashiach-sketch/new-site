@@ -143,6 +143,33 @@ function mapSanaBundleToNewsRow(j, source) {
   };
 }
 
+function mapCnnBundleToNewsRow(j, source) {
+  const h = j.hero;
+  const en = h.title;
+  const he = h.titleTranslations?.he ?? '';
+  const ar = h.titleTranslations?.ar ?? '';
+  const subEn = h.subTitle || '';
+  const subHe = h.subTitleTranslations?.he ?? '';
+  const subAr = h.subTitleTranslations?.ar ?? '';
+  return {
+    main_headline_en: en,
+    main_headline_he: he || en,
+    main_headline_ar: ar || en,
+    image_headline_en: subEn,
+    image_headline_he: subHe || subEn,
+    image_headline_ar: subAr || subEn,
+    image_url: h.imageUrl || null,
+    flashers_en: j.flashers.map((f) => f.title),
+    flashers_he: j.flashers.map((f) => f.titleTranslations?.he ?? ''),
+    flashers_ar: j.flashers.map((f) => f.titleTranslations?.ar ?? ''),
+    source_key: source.key,
+    source_name: source.name,
+    source_url: source.url,
+    country: source.country,
+    last_fetched: new Date().toISOString(),
+  };
+}
+
 function mapWafaBundleToNewsRow(j, source) {
   const h = j.hero;
   const ar = h.title;
@@ -373,6 +400,32 @@ export async function fetchNewsFromRSS(source) {
         translateFlashers: true,
       });
       return mapWafaBundleToNewsRow(bundle, source);
+    }
+
+    if (source.key === 'cnn') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/cnn?translate=he,ar&translateFlashers=1', { cache: 'no-store' });
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errJ = await res.json();
+            if (errJ.error) detail = errJ.error;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(`CNN API: ${detail}`);
+        }
+        const j = await res.json();
+        return mapCnnBundleToNewsRow(j, source);
+      }
+      const { buildCnnNewsPayload } = await import('@/utils/cnnNewsPayload.js');
+      const bundle = await buildCnnNewsPayload({
+        homeUrl: source.url.endsWith('/') ? source.url : `${source.url}/`,
+        flashersLimit: 40,
+        translateLangs: ['he', 'ar'],
+        translateFlashers: true,
+      });
+      return mapCnnBundleToNewsRow(bundle, source);
     }
 
     if (source.key === 'aawsat') {
@@ -618,6 +671,34 @@ export async function testRSSFeed(sourceKey) {
           flashersLimit: 40,
           translateLangs: ['he', 'en'],
           translateFlashers: true,
+        });
+        return {
+          available: true,
+          itemCount: j.flashers.length,
+          latestTitle: j.hero.title || 'No title',
+        };
+      } catch (e) {
+        return { available: false, error: e.message };
+      }
+    }
+
+    if (sourceKey === 'cnn') {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/cnn?translate=he,ar', { cache: 'no-store' });
+        if (!res.ok) return { available: false, error: `HTTP ${res.status}` };
+        const j = await res.json();
+        return {
+          available: true,
+          itemCount: (j.flashers && j.flashers.length) || 0,
+          latestTitle: j.hero?.title || 'No title',
+        };
+      }
+      const { buildCnnNewsPayload } = await import('@/utils/cnnNewsPayload.js');
+      try {
+        const j = await buildCnnNewsPayload({
+          flashersLimit: 40,
+          translateLangs: ['he', 'ar'],
+          translateFlashers: false,
         });
         return {
           available: true,

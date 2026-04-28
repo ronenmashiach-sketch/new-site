@@ -47,6 +47,63 @@ function parseGoogleResponse(data) {
   return segments.join('').trim();
 }
 
+/** מפרק לטקסט ותגים — Google Translate מחליף לעיתים את ה־a ב־`<a` ל־אות בשפת היעד. */
+function splitHtmlTagChunks(s) {
+  const re = /<[^>]+>/g;
+  const chunks = [];
+  let last = 0;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > last) chunks.push({ type: 'text', v: s.slice(last, m.index) });
+    chunks.push({ type: 'tag', v: m[0] });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) chunks.push({ type: 'text', v: s.slice(last) });
+  return chunks;
+}
+
+function chunksIncludeTags(chunks) {
+  return chunks.some((c) => c.type === 'tag');
+}
+
+/**
+ * תרגום כשיש HTML: רק קטעי טקסט נשלחים לתרגום, התגים מועתקים כמו במקור.
+ * @param {string} original
+ * @param {string} from
+ * @param {string[]} targets
+ * @returns {Promise<Array<{ lang: string, text: string | null, errors: Record<string, string> }>>}
+ */
+async function translateOneToManyChunkedHtml(original, from, targets) {
+  const chunks = splitHtmlTagChunks(original);
+  if (!chunksIncludeTags(chunks)) {
+    return null;
+  }
+
+  const textChunks = chunks.filter((c) => c.type === 'text');
+
+  return Promise.all(
+    targets.map(async (lang) => {
+      let firstError;
+      const translatedTextParts = await Promise.all(
+        textChunks.map(async (c) => {
+          const t = c.v;
+          if (!String(t).trim()) return t;
+          const r = await translateOneLang(t, { from, to: lang });
+          if (r.error && !firstError) firstError = r.error;
+          return r.text ?? t;
+        })
+      );
+      let ti = 0;
+      let out = '';
+      for (const c of chunks) {
+        if (c.type === 'tag') out += c.v;
+        else out += translatedTextParts[ti++] ?? '';
+      }
+      return { lang, text: out.trim(), error: firstError };
+    })
+  );
+}
+
 async function fetchWithTimeout(url, ms) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
@@ -107,19 +164,34 @@ export async function translateOneLang(text, { from = 'he', to }) {
 /**
  * תרגום מחרוזת אחת לכמה שפות במקביל.
  * @param {string} text
- * @param {{ from?: string, to: string[] }} opts
+ * @param {{ from?: string, to: string[], preserveHtml?: boolean }} opts
+ *   preserveHtml — כשיש תגי HTML (למשל `<a href=...>`), מתרגמים רק את הטקסט ביניהם כדי שלא יישברו התגים.
  * @returns {Promise<{ original: string, translations: Record<string, string|null>, errors: Record<string, string> }>}
  */
-export async function translateOneToMany(text, { from = 'he', to = [] }) {
+export async function translateOneToMany(text, { from = 'he', to = [], preserveHtml = false } = {}) {
   const original = (text || '').trim();
   const targets = (to || []).filter(Boolean);
   if (!original || !targets.length) {
     return { original, translations: {}, errors: {} };
   }
 
-  const results = await Promise.all(
-    targets.map((lang) => translateOneLang(original, { from, to: lang }).then((r) => ({ lang, ...r })))
-  );
+  let results;
+  if (preserveHtml && /<[^>]+>/.test(original)) {
+    const chunked = await translateOneToManyChunkedHtml(original, from, targets);
+    if (chunked) {
+      results = chunked.map((row) => ({
+        lang: row.lang,
+        text: row.text,
+        error: row.error,
+      }));
+    }
+  }
+
+  if (!results) {
+    results = await Promise.all(
+      targets.map((lang) => translateOneLang(original, { from, to: lang }).then((r) => ({ lang, ...r })))
+    );
+  }
 
   const translations = {};
   const errors = {};
@@ -133,12 +205,13 @@ export async function translateOneToMany(text, { from = 'he', to = [] }) {
 /**
  * תרגום כמה מחרוזות ייחודיות לאותן שפות (אצוות קונקרנציה כדי לא להציף את השירות).
  * @param {string[]} strings
- * @param {{ from?: string, to: string[], concurrency?: number }} opts
+ * @param {{ from?: string, to: string[], concurrency?: number, preserveHtml?: boolean }} opts
  * @returns {Promise<{ map: Map<string, Record<string, string|null>>, errors: Array<{ text: string, lang: string, error: string }> }>}
  */
 export async function translateManyStrings(strings, opts) {
   const from = opts?.from || 'he';
   const targets = Array.isArray(opts?.to) ? opts.to.filter(Boolean) : [];
+  const preserveHtml = Boolean(opts?.preserveHtml);
   const concurrency = Math.max(1, Math.min(12, Number(opts?.concurrency) || 5));
 
   const map = new Map();
@@ -154,7 +227,7 @@ export async function translateManyStrings(strings, opts) {
     const batch = unique.slice(i, i + concurrency);
     await Promise.all(
       batch.map(async (text) => {
-        const r = await translateOneToMany(text, { from, to: targets });
+        const r = await translateOneToMany(text, { from, to: targets, preserveHtml });
         map.set(text, r.translations || {});
         for (const [lang, err] of Object.entries(r.errors || {})) {
           if (err) errors.push({ text: text.slice(0, 80), lang, error: err });
