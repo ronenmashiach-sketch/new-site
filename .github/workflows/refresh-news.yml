@@ -1,0 +1,34 @@
+# קורא ל-endpoint של העדכון כל 30 דקות (שעון UTC של GitHub).
+# detach=1 → השרת מחזיר 202 מיד והמשך הריצה ברקע (waitUntil ב-Vercel) — ה-job לא ממתין דקות.
+# הגדר ב-GitHub → Settings → Secrets → Actions:
+#   NEWS_SITE_URL = https://your-deployment.vercel.app   (בלי סלאש בסוף)
+
+name: Refresh news APIs
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger refresh (no long wait)
+        env:
+          BASE_URL: ${{ secrets.NEWS_SITE_URL }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "::error::חסר secret NEWS_SITE_URL (הגדר ב-Repo → Settings → Secrets and variables → Actions)"
+            exit 1
+          fi
+          URL="${BASE_URL%/}/api/cron/refresh-news?detach=1"
+          echo "GET $URL"
+          code=$(curl -sS -o response.json -w "%{http_code}" --connect-timeout 15 --max-time 60 "$URL")
+          echo "HTTP $code"
+          cat response.json
+          echo
+          if [ "$code" != "202" ]; then
+            exit 1
+          fi
