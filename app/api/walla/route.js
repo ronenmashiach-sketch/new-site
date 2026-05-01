@@ -1,3 +1,4 @@
+import { loadCSVData } from '@/utils/csvDatabase';
 import { isAllowedRssHostUrl } from '@/lib/allowedRssHosts';
 import { parseRssItemsServer } from '@/utils/rssParseServer';
 import {
@@ -37,6 +38,12 @@ function parseTranslateFlashers(raw) {
   return true;
 }
 
+function parseUseDbFallback(raw) {
+  if (raw === null || raw === undefined) return false;
+  const v = String(raw).trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 function isWallaHostUrl(urlString) {
   try {
     const u = new URL(urlString);
@@ -46,6 +53,16 @@ function isWallaHostUrl(urlString) {
   } catch {
     return false;
   }
+}
+
+function looksLikeCloudflareBlock(text) {
+  const t = String(text || '').slice(0, 4000).toLowerCase();
+  return (
+    t.includes('just a moment') ||
+    t.includes('cf-chl') ||
+    t.includes('enable javascript') ||
+    (t.includes('cloudflare') && (t.includes('challenge') || t.includes('ray id')))
+  );
 }
 
 function breakingOriginFromUrl(urlString) {
@@ -59,12 +76,20 @@ function breakingOriginFromUrl(urlString) {
 }
 
 async function fetchHtml(url) {
+  let referer = 'https://www.walla.co.il/';
+  try {
+    const u = new URL(url);
+    if (u.hostname.toLowerCase().startsWith('news.')) referer = 'https://www.walla.co.il/';
+  } catch {
+    /* noop */
+  }
   return fetch(url, {
     headers: {
       'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'he-IL,he;q=0.9',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      Accept: 'text/html,application/xhtml+xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.7,en;q=0.6',
+      Referer: referer,
     },
     cache: 'no-store',
   });
@@ -88,13 +113,37 @@ function normalizeFlashersLimit(raw) {
   return Math.min(MAX_FLASHERS, n);
 }
 
+function buildFromCachedDbRow(row) {
+  if (!row) return null;
+  const he = row.main_headline_he || '';
+  const en = row.main_headline_en || '';
+  const ar = row.main_headline_ar || '';
+  const hero = {
+    title: he,
+    fullTitle: he,
+    titleTranslations: { en, ar },
+    subTitle: row.image_headline_he || '',
+    subTitleTranslations: { en: row.image_headline_en || '', ar: row.image_headline_ar || '' },
+    imageUrl: row.image_url || '',
+    articleUrl: null,
+  };
+  const flHe = Array.isArray(row.flashers_he) ? row.flashers_he : [];
+  const flEn = Array.isArray(row.flashers_en) ? row.flashers_en : [];
+  const flAr = Array.isArray(row.flashers_ar) ? row.flashers_ar : [];
+  const flashers = flHe.slice(0, 60).map((t, i) => ({
+    title: t,
+    articleUrl: null,
+    titleTranslations: { en: flEn[i] ?? '', ar: flAr[i] ?? '' },
+  }));
+  return { hero, flashers };
+}
+
 /**
  * GET /api/walla — כותרת ראשית מדף הבית + מבזקים מעמוד המבזקים (HTML).
  * גיבוי מבזקים: RSS חדשות באארץ (`rss.walla.co.il/feed/1`) ואז שורת המבזקים בדף הבית.
+ * אם סקרייפ נכשל / חסום — רק עותק מ־DB.csv עם `useDbFallback=1` (בלי Google News).
  *
- * Query: `homeUrl`, `breakingUrl`, `flashersRssUrl`, `flashers`, `translate`, `translateFlashers`
- * בסוף: עדכון שורת `source_key=walla` ב־`data/DB.csv` (אם קיימת).
- * שמירת CSV: UTF-8 עם BOM (`csvDatabaseWrite.server.js`).
+ * Query: `homeUrl`, `breakingUrl`, `flashersRssUrl`, `flashers`, `translate`, `translateFlashers`, `useDbFallback`
  */
 export async function GET(request) {
   try {
@@ -116,6 +165,7 @@ export async function GET(request) {
     const flashersLimit = normalizeFlashersLimit(searchParams.get('flashers'));
     const translateLangs = parseTranslateLangs(searchParams.get('translate'));
     const translateFlashers = parseTranslateFlashers(searchParams.get('translateFlashers'));
+    const useDbFallback = parseUseDbFallback(searchParams.get('useDbFallback'));
     const breakingOrigin = breakingOriginFromUrl(breakingUrl);
 
     const [homeRes, breakingRes, rssXml] = await Promise.all([
@@ -126,49 +176,124 @@ export async function GET(request) {
         : Promise.resolve(null),
     ]);
 
-    if (!homeRes.ok) {
-      return Response.json({ error: `דף הבית HTTP ${homeRes.status}` }, { status: 502 });
-    }
-    if (!breakingRes.ok) {
-      return Response.json({ error: `דף מבזקים HTTP ${breakingRes.status}` }, { status: 502 });
-    }
-
-    const homeHtml = await homeRes.text();
-    const breakingHtml = await breakingRes.text();
-
-    let heroResolved = extractWallaHomepageHeroFromHtml(homeHtml);
-    if (!heroResolved) {
-      return Response.json(
-        { error: 'לא נמצאה כותרת שער (drama-wide) בדף הבית', homeUrl },
-        { status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' } }
-      );
+    let homeHtml = '';
+    try {
+      homeHtml = await homeRes.text();
+    } catch {
+      homeHtml = '';
     }
 
-    heroResolved = await fillWallaHeroImageFromArticlePage(heroResolved);
+    let breakingHtml = '';
+    try {
+      if (breakingRes.ok) breakingHtml = await breakingRes.text();
+    } catch {
+      breakingHtml = '';
+    }
 
-    let rawFlashers = extractWallaBreakingPageItemsFromHtml(
-      breakingHtml,
-      flashersLimit + 8,
-      breakingOrigin
-    );
-    let flashersSource = 'breaking_html';
+    let rssMeta = { rssUrl: flashersRssUrl || null, error: null };
+    if (rssXml && typeof rssXml === 'object' && rssXml.__err) {
+      rssMeta.error = rssXml.__err;
+    }
 
-    if (rawFlashers.length === 0) {
-      if (rssXml && typeof rssXml === 'object' && rssXml.__err) {
-        flashersSource = `breaking_empty_rss_error:${rssXml.__err}`;
-      } else if (typeof rssXml === 'string') {
-        const items = parseRssItemsServer(rssXml);
-        rawFlashers = items
-          .slice(0, flashersLimit + 5)
-          .map((it) => ({ title: it.title, articleUrl: it.link || null }))
-          .filter((it) => it.title && it.articleUrl);
-        flashersSource = 'rss';
+    /** @type {{ title: string, articleUrl: string | null, subTitle: string | null, imageUrl: string | null, imageSource: string | null } | null} */
+    let heroResolved = null;
+    let rawFlashers = [];
+    let flashersSource = '';
+    const homeBlocked = !homeRes.ok || looksLikeCloudflareBlock(homeHtml);
+    const breakingBlocked = !breakingRes.ok || looksLikeCloudflareBlock(breakingHtml);
+
+    let primaryError = '';
+    if (!homeBlocked && homeHtml) {
+      heroResolved = extractWallaHomepageHeroFromHtml(homeHtml);
+      if (heroResolved) {
+        heroResolved = await fillWallaHeroImageFromArticlePage(heroResolved);
+
+        if (!breakingBlocked && breakingHtml) {
+          rawFlashers = extractWallaBreakingPageItemsFromHtml(
+            breakingHtml,
+            flashersLimit + 8,
+            breakingOrigin
+          );
+          flashersSource = 'breaking_html';
+        }
+
+        if (rawFlashers.length === 0) {
+          if (rssXml && typeof rssXml === 'object' && rssXml.__err) {
+            flashersSource = `breaking_empty_rss_error:${rssXml.__err}`;
+          } else if (typeof rssXml === 'string') {
+            const items = parseRssItemsServer(rssXml);
+            rawFlashers = items
+              .slice(0, flashersLimit + 5)
+              .map((it) => ({ title: it.title, articleUrl: it.link || null }))
+              .filter((it) => it.title && it.articleUrl);
+            flashersSource = 'rss';
+          }
+        }
+
+        if (rawFlashers.length === 0) {
+          rawFlashers = extractWallaHomepageNewsflashFromHtml(homeHtml, flashersLimit + 8);
+          flashersSource = 'homepage_newsflash';
+        }
+      } else {
+        primaryError = 'לא נמצאה כותרת שער (drama-wide) בדף הבית';
       }
+    } else {
+      primaryError = !homeRes.ok ? `דף הבית HTTP ${homeRes.status}` : 'דף הבית חסום או תוכן חוסם (למשל Cloudflare)';
     }
 
-    if (rawFlashers.length === 0) {
-      rawFlashers = extractWallaHomepageNewsflashFromHtml(homeHtml, flashersLimit + 8);
-      flashersSource = 'homepage_newsflash';
+    if (!heroResolved) {
+      const fetchError = primaryError || 'לא נחלצה כותרת שער';
+      if (!useDbFallback) {
+        return Response.json(
+          {
+            error: 'לא ניתן לטעון Walla (סקרייפ נכשל)',
+            fetchError,
+            hint: 'הוסף ?useDbFallback=1 לקבלת עותק מ-DB.csv.',
+          },
+          { status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' } }
+        );
+      }
+      const rows = await loadCSVData();
+      const row = rows.find((r) => String(r.source_key || '').trim().toLowerCase() === 'walla');
+      const cached = buildFromCachedDbRow(row);
+      if (!cached) {
+        return Response.json(
+          { error: 'אין נתונים ב-DB.csv ל-walla', fetchError },
+          { status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' } }
+        );
+      }
+      return Response.json(
+        {
+          fetchedAt: new Date().toISOString(),
+          hero: cached.hero,
+          flashers: cached.flashers,
+          meta: {
+            homepageUrl: homeUrl,
+            breakingUrl,
+            flashersRssUrl: rssMeta.rssUrl,
+            flashersRssError: rssMeta.error,
+            flashersSource: 'db_csv_fallback',
+            heroImageSource: null,
+            flashersReturned: cached.flashers.length,
+            translateLangs,
+            translateFlashers: translateLangs.length ? translateFlashers : null,
+            translateProvider: null,
+            translateErrors: {},
+            flashersTranslateErrorsSample: [],
+            dbCsvSynced: false,
+            dbCsvSyncError: null,
+            dbCsvEncoding: 'utf-8-bom',
+            fetchError,
+          },
+        },
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+          },
+        }
+      );
     }
 
     const heroLink = (heroResolved.articleUrl || '').split('#')[0];
@@ -179,11 +304,6 @@ export async function GET(request) {
         return l !== heroLink;
       })
       .slice(0, flashersLimit);
-
-    let rssMeta = { rssUrl: flashersRssUrl || null, error: null };
-    if (rssXml && typeof rssXml === 'object' && rssXml.__err) {
-      rssMeta.error = rssXml.__err;
-    }
 
     let titleTranslations = {};
     let translateErrors = {};

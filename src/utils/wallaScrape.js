@@ -62,27 +62,27 @@ export function extractWallaHomepageHeroFromHtml(html) {
   if (!sectionM || sectionM.index == null) return null;
   const block = html.slice(sectionM.index, sectionM.index + 45000);
 
-  const hrefM = block.match(
-    /<div class="media-wrap">[\s\S]*?<a\s+href="(https:\/\/[^"]+\.walla\.co\.il\/item\/\d+)"/i
-  );
+  const mediaIdx = block.search(/<div class="media-wrap">/i);
+  const mediaChunk = mediaIdx >= 0 ? block.slice(mediaIdx, mediaIdx + 42000) : block;
+
+  const hrefM = mediaChunk.match(/href="(https:\/\/[^"]+\.walla\.co\.il\/item\/\d+)"/i);
   const articleUrl = hrefM ? hrefM[1].trim() : null;
 
-  const h2M = block.match(/<article[^>]*>[\s\S]*?<a[^>]+href="[^"]*"[^>]*>\s*<h2>([\s\S]*?)<\/h2>/i);
+  /** וואלה עדכנו מבנה: אחרי <a href=item> מגיעים roof/div/style ורק אז <h2> (לא מיד אחרי פתיחת ה-a). */
+  const h2M = mediaChunk.match(/<h2>([\s\S]*?)<\/h2>/i);
   const title = h2M ? stripTags(h2M[1]) : '';
   if (!title) return null;
 
   let subTitle = null;
-  const subM = block.match(/<article[^>]*>[\s\S]*?<\/h2>[\s\S]*?<p>([\s\S]*?)<\/p>/i);
+  const subM = mediaChunk.match(/<h2>[\s\S]*?<\/h2>[\s\S]*?<p>([\s\S]*?)<\/p>/i);
   if (subM) {
     const sub = stripTags(subM[1]);
     if (sub) subTitle = sub;
   }
 
   /** תמונות השער: רק בתוך ה־media-wrap של השקופית הראשונה (עד media-slider-indicator). */
-  const mediaWrapM = block.match(
-    /<div class="media-wrap">([\s\S]*?)<ul class="media-slider-indicator"/i
-  );
-  const heroMediaChunk = mediaWrapM ? mediaWrapM[1] : block;
+  const mediaWrapM = mediaChunk.match(/([\s\S]*?)<ul class="media-slider-indicator"/i);
+  const heroMediaChunk = mediaWrapM ? mediaWrapM[1] : mediaChunk;
 
   /** וואלה משתמשים בתמונה תחת wrap-sub-image (לא בתמונה של main-media עם אייקון ניגון). */
   let imageUrl = null;
