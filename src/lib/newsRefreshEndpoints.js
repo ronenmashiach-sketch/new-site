@@ -11,6 +11,8 @@ export const NEWS_REFRESH_ENDPOINTS = [
   { id: 'jordantimes', path: '/api/jordantimes' },
   { id: 'ahram', path: '/api/ahram' },
   { id: 'aawsat', path: '/api/aawsat' },
+  { id: 'irna', path: '/api/irna' },
+  { id: 'dailystar', path: '/api/dailystar' },
   { id: 'national', path: '/api/national' },
   { id: 'gulfnews', path: '/api/gulfnews' },
   { id: 'bna', path: '/api/bna' },

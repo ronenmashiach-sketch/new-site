@@ -1,6 +1,11 @@
 import { loadCSVData } from '@/utils/csvDatabase';
-import { buildBnaDbCsvUpdates, syncBnaRowToDbCsv } from '@/utils/bnaDbCsvSync';
-import { BNA_HOME_URL, GOOGLE_NEWS_BNA_RSS, buildBnaNewsPayload } from '@/utils/bnaNewsPayload';
+import { isAllowedRssHostUrl } from '@/lib/allowedRssHosts';
+import { buildDailyStarDbCsvUpdates, syncDailyStarRowToDbCsv } from '@/utils/dailyStarDbCsvSync';
+import {
+  DAILY_STAR_HOME_URL,
+  GOOGLE_NEWS_DAILY_STAR_PRIMARY,
+  buildDailyStarNewsPayload,
+} from '@/utils/dailyStarNewsPayload';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,12 +43,12 @@ function parseUseDbFallback(raw) {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
-function isBnaFamilyUrl(urlString) {
+function isDailyStarHostUrl(urlString) {
   try {
     const u = new URL(urlString);
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
     const h = u.hostname.toLowerCase();
-    return h === 'bna.bh' || h.endsWith('.bna.bh');
+    return h === 'dailystar.com.lb' || h.endsWith('.dailystar.com.lb');
   } catch {
     return false;
   }
@@ -75,17 +80,20 @@ function buildFromCachedDbRow(row) {
 }
 
 /**
- * GET /api/bna — Hero מדף הבית (לעיתים נחסם AWS WAF) + מבזקים מ־RSS ב־api.bna.bh (ברירת מחדל אם לא מועבר rssUrl) + תרגום.
- * פרמטרים: rssUrl, homeUrl, flashers, translate, translateFlashers, useDbFallback.
+ * GET /api/dailystar — Daily Star Lebanon; עדיפות: דף הבית (כמו באתר) → RSS → Google News RSS.
+ * Query: rssUrl, homeUrl, flashers, translate, translateFlashers, useDbFallback
  */
 export async function GET(request) {
   try {
     const { searchParams } = request.nextUrl;
-    const homeUrl = (searchParams.get('homeUrl') && searchParams.get('homeUrl').trim()) || BNA_HOME_URL;
+    const homeUrl = (searchParams.get('homeUrl') && searchParams.get('homeUrl').trim()) || DAILY_STAR_HOME_URL;
     const rssUrl = (searchParams.get('rssUrl') && searchParams.get('rssUrl').trim()) || '';
 
-    if (!isBnaFamilyUrl(homeUrl) || (rssUrl && !isBnaFamilyUrl(rssUrl))) {
-      return Response.json({ error: 'מותר רק דומיין bna.bh ל־rssUrl ול־homeUrl' }, { status: 400 });
+    if (!isDailyStarHostUrl(homeUrl)) {
+      return Response.json({ error: 'מותר רק דומיין dailystar.com.lb ל־homeUrl' }, { status: 400 });
+    }
+    if (rssUrl && !isAllowedRssHostUrl(rssUrl)) {
+      return Response.json({ error: 'כתובת rssUrl לא מורשית' }, { status: 400 });
     }
 
     const translateLangs = parseTranslateLangs(searchParams.get('translate'));
@@ -98,7 +106,7 @@ export async function GET(request) {
     let meta;
 
     try {
-      const bundle = await buildBnaNewsPayload({
+      const bundle = await buildDailyStarNewsPayload({
         rssUrl,
         homeUrl,
         flashersLimit,
@@ -113,21 +121,21 @@ export async function GET(request) {
       if (!useDbFallback) {
         return Response.json(
           {
-            error: 'לא ניתן לטעון BNA',
+            error: 'לא ניתן לטעון Daily Star',
             fetchError,
             hint:
-              'בדרך כלל נטען מ־api.bna.bh או מ־Google News (site:bna.bh). אם הכל נכשל — נסה ?useDbFallback=1 (DB.csv).',
-            googleNewsRssUrl: GOOGLE_NEWS_BNA_RSS,
+              'מנסים RSS ישיר; אם Cloudflare חוסם — גיבוי Google News. אם הכל נכשל: ?useDbFallback=1 (DB.csv).',
+            googleNewsRssUrl: GOOGLE_NEWS_DAILY_STAR_PRIMARY,
           },
           { status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' } },
         );
       }
       const rows = await loadCSVData();
-      const row = rows.find((r) => String(r.source_key || '').trim().toLowerCase() === 'bna');
+      const row = rows.find((r) => String(r.source_key || '').trim().toLowerCase() === 'daily_star');
       const cached = buildFromCachedDbRow(row);
       if (!cached) {
         return Response.json(
-          { error: 'אין נתונים ב-DB.csv ל־bna', fetchError },
+          { error: 'אין נתונים ב-DB.csv ל־daily_star', fetchError },
           { status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' } },
         );
       }
@@ -150,7 +158,7 @@ export async function GET(request) {
       );
     }
 
-    const csvPatch = buildBnaDbCsvUpdates({
+    const csvPatch = buildDailyStarDbCsvUpdates({
       hero,
       flashers,
       homeUrl,
@@ -161,11 +169,11 @@ export async function GET(request) {
     let dbCsvSynced = false;
     let dbCsvSyncError = null;
     try {
-      await syncBnaRowToDbCsv(csvPatch);
+      await syncDailyStarRowToDbCsv(csvPatch);
       dbCsvSynced = true;
     } catch (err) {
       dbCsvSyncError = String(err?.message || err);
-      console.error('api/bna DB.csv sync:', err);
+      console.error('api/dailystar DB.csv sync:', err);
     }
 
     return Response.json(
@@ -189,4 +197,3 @@ export async function GET(request) {
     );
   }
 }
-

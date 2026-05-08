@@ -42,6 +42,7 @@ async function executeRefresh(baseUrl) {
     try {
       const res = await fetch(url, {
         method: 'GET',
+        cache: 'no-store',
         headers: {
           'User-Agent': 'news-refresh-cron/1.0',
           Accept: 'application/json',

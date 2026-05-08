@@ -9,6 +9,8 @@ const INVALID_APP_IDS = new Set(['', 'your-app-id']);
 /**
  * Public settings (same endpoint the Base44 SDK used). Fetch-only — no @base44/sdk.
  */
+const PUBLIC_SETTINGS_FETCH_MS = 15_000;
+
 async function fetchBase44PublicSettings(appId, token) {
   const headers = {
     Accept: 'application/json',
@@ -22,20 +24,38 @@ async function fetchBase44PublicSettings(appId, token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
   const url = `/api/apps/public/prod/public-settings/by-id/${encodeURIComponent(appId)}`;
-  const res = await fetch(url, { method: 'GET', headers, credentials: 'same-origin' });
-  let data = {};
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PUBLIC_SETTINGS_FETCH_MS);
   try {
-    data = await res.json();
-  } catch {
-    /* ignore */
+    const res = await fetch(url, {
+      method: 'GET',
+      headers,
+      credentials: 'same-origin',
+      signal: controller.signal,
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch {
+      /* ignore */
+    }
+    if (!res.ok) {
+      const err = new Error(data.message || data.detail || res.statusText || 'Request failed');
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      const err = new Error('פג הזמן לטעינת הגדרות האפליקציה');
+      err.status = 408;
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  if (!res.ok) {
-    const err = new Error(data.message || data.detail || res.statusText || 'Request failed');
-    err.status = res.status;
-    err.data = data;
-    throw err;
-  }
-  return data;
 }
 
 export const AuthProvider = ({ children }) => {

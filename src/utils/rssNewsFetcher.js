@@ -251,6 +251,10 @@ function mapBnaBundleToNewsRow(j, source) {
   };
 }
 
+function mapIrnaBundleToNewsRow(j, source) {
+  return mapBnaBundleToNewsRow(j, source);
+}
+
 function mapWafaBundleToNewsRow(j, source) {
   const h = j.hero;
   const ar = h.title;
@@ -588,6 +592,50 @@ export async function fetchNewsFromRSS(source) {
         translateFlashers: true,
       });
       return mapBnaBundleToNewsRow(bundle, source);
+    }
+
+    if (source.key === 'irna') {
+      const apiPath = '/api/irna?translate=he,ar&translateFlashers=1';
+      const apiUrl =
+        typeof window !== 'undefined'
+          ? apiPath
+          : `${process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') || `http://127.0.0.1:${process.env.PORT || 3000}`}${apiPath}`;
+      const res = await fetch(apiUrl, { cache: 'no-store' });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const errJ = await res.json();
+          if (errJ.error) detail = errJ.error;
+          if (errJ.fetchError) detail = `${detail}: ${errJ.fetchError}`;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(`IRNA API: ${detail}`);
+      }
+      const j = await res.json();
+      return mapIrnaBundleToNewsRow(j, source);
+    }
+
+    if (source.key === 'daily_star') {
+      const apiPath = '/api/dailystar?translate=he,ar&translateFlashers=1';
+      const apiUrl =
+        typeof window !== 'undefined'
+          ? apiPath
+          : `${process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') || `http://127.0.0.1:${process.env.PORT || 3000}`}${apiPath}`;
+      const res = await fetch(apiUrl, { cache: 'no-store' });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const errJ = await res.json();
+          if (errJ.error) detail = errJ.error;
+          if (errJ.fetchError) detail = `${detail}: ${errJ.fetchError}`;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(`Daily Star API: ${detail}`);
+      }
+      const j = await res.json();
+      return mapNationalBundleToNewsRow(j, source);
     }
 
     if (source.key === 'aawsat') {

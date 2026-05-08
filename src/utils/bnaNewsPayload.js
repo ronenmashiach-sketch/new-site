@@ -1,7 +1,6 @@
 /**
- * BNA (Bahrain News Agency) — ניסיון לחלץ hero מדף הבית + fallback ל־RSS (אם מסופק).
- *
- * הערה: האתר לעיתים מוגן AWS WAF ("Human Verification"). במקרה כזה נחזיר שגיאה/פולבאק.
+ * BNA (Bahrain News Agency) — hero מדף הבית (לעיתים חסום WAF) + RSS מ־api.bna.bh;
+ * אם הפידים הרשמיים לא זמינים (502 וכו') — גיבוי Google News RSS לפי אתר bna.bh.
  */
 
 import { translateManyStrings, translateOneToMany } from '@/utils/googleTranslate';
@@ -9,7 +8,26 @@ import { parseRssItemsServer } from '@/utils/rssParseServer';
 
 export const BNA_HOME_URL = 'https://www.bna.bh/en';
 
-const DEFAULT_RSS_URL = '';
+/** דף הבית לעיתים חסום AWS WAF; הפידים ב־api.bna.bh לרוב נגישים ללא דפדפן */
+const RSS_FALLBACK_URLS = [
+  'https://api.bna.bh/rss/world-news',
+  'https://api.bna.bh/rss/local-news',
+  'https://api.bna.bh/rss/arab-news',
+  'https://api.bna.bh/rss/business',
+];
+
+/** כש־api.bna.bh מחזיר 502 / דף הבית ב-WAF — Google News (בלי `when:7d`: הפיד יוצא ריק לעיתים) */
+export const GOOGLE_NEWS_BNA_RSS =
+  'https://news.google.com/rss/search?q=' +
+  encodeURIComponent('site:bna.bh') +
+  '&hl=en&gl=BH&ceid=BH:en';
+
+const GOOGLE_NEWS_FALLBACK_URLS = [
+  GOOGLE_NEWS_BNA_RSS,
+  'https://news.google.com/rss/search?q=' +
+    encodeURIComponent('site:www.bna.bh') +
+    '&hl=en&gl=BH&ceid=BH:en',
+];
 
 const FETCH_HEADERS = {
   Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
@@ -185,15 +203,11 @@ async function fetchHomepageHero(homeUrl) {
 }
 
 async function fetchRssXml(rssUrl) {
-  const res = await fetch(rssUrl, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; NewsApp/1.0)',
-      Accept: 'application/rss+xml, application/xml, text/xml, */*',
-    },
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error(`BNA RSS HTTP ${res.status}`);
-  return res.text();
+  const r = await fetchWithRetries(rssUrl, 3);
+  const xml = r.text || '';
+  if (!r.ok) throw new Error(`BNA RSS HTTP ${r.status}`);
+  if (looksLikeHumanVerification(xml)) throw new Error('BNA RSS blocked by Human Verification (AWS WAF)');
+  return xml;
 }
 
 /**
@@ -210,7 +224,7 @@ async function fetchRssXml(rssUrl) {
  * @param {BnaNewsPayloadOptions=} opts
  */
 export async function buildBnaNewsPayload(opts = {}) {
-  const rssUrl = (opts.rssUrl && String(opts.rssUrl).trim()) || DEFAULT_RSS_URL;
+  const explicitRss = (opts.rssUrl && String(opts.rssUrl).trim()) || '';
   const homeUrl = (opts.homeUrl && String(opts.homeUrl).trim()) || BNA_HOME_URL;
   const limit = Math.min(120, Math.max(0, Number(opts.flashersLimit) || 40));
   const translateLangs = Array.isArray(opts.translateLangs) ? opts.translateLangs : ['he', 'ar'];
@@ -229,17 +243,57 @@ export async function buildBnaNewsPayload(opts = {}) {
 
   let items = [];
   let rssError = null;
-  if (rssUrl) {
+  /** @type {string | null} */
+  let rssUrlUsed = null;
+  const rssCandidates = explicitRss ? [explicitRss] : RSS_FALLBACK_URLS;
+  for (const tryUrl of rssCandidates) {
     try {
-      const xml = await fetchRssXml(rssUrl);
-      items = parseRssItemsServer(xml);
+      const xml = await fetchRssXml(tryUrl);
+      const parsed = parseRssItemsServer(xml);
+      if (parsed.length) {
+        items = parsed;
+        rssUrlUsed = tryUrl;
+        rssError = null;
+        break;
+      }
+      rssError = `RSS ריק: ${tryUrl}`;
     } catch (e) {
       rssError = String(e?.message || e);
     }
   }
 
+  /** api.bna.bh לעיתים 502 מ-CloudFront; דף הבית WAF — מנסים כמה שאילתות Google News */
+  if (!items.length && !explicitRss) {
+    let googleErr = '';
+    for (const gUrl of GOOGLE_NEWS_FALLBACK_URLS) {
+      try {
+        const xml = await fetchRssXml(gUrl);
+        const parsed = parseRssItemsServer(xml);
+        if (parsed.length) {
+          items = parsed;
+          rssUrlUsed = gUrl;
+          rssError = null;
+          googleErr = '';
+          break;
+        }
+        googleErr = `Google RSS ריק (${gUrl})`;
+      } catch (e) {
+        googleErr = String(e?.message || e);
+      }
+    }
+    if (!items.length && googleErr) {
+      rssError = [rssError, googleErr].filter(Boolean).join(' | ');
+    }
+  }
+
   if (!homeHero?.title && !items.length) {
-    throw new Error(heroError || rssError || 'לא ניתן לטעון BNA (homepage/RSS)');
+    const detail = [
+      heroError && `דף הבית: ${heroError}`,
+      rssError && `RSS: ${rssError}`,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+    throw new Error(detail || 'לא ניתן לטעון BNA (דף הבית חסום WAF וגם RSS לא הוחזר)');
   }
 
   const firstRss = items[0] || { title: '', link: null, imageUrl: null, description: '' };
@@ -301,8 +355,18 @@ export async function buildBnaNewsPayload(opts = {}) {
     flashers,
     meta: {
       homepageUrl: homeUrl,
-      rssUrl: rssUrl || null,
-      flashersSource: rssUrl ? 'bna_rss_plus_homepage_hero' : 'bna_homepage_hero_only',
+      rssUrl: rssUrlUsed || explicitRss || null,
+      rssExplicit: Boolean(explicitRss),
+      googleNewsFallback: Boolean(rssUrlUsed?.includes('news.google.com')),
+      flashersSource: rssUrlUsed?.includes('news.google.com')
+        ? 'bna_google_news_rss'
+        : homeHero?.title
+          ? rssUrlUsed
+            ? 'bna_rss_plus_homepage_hero'
+            : 'bna_homepage_hero_only'
+          : rssUrlUsed
+            ? 'bna_rss_only'
+            : 'bna_partial',
       flashersReturned: flashers.length,
       translateLangs: tlTargets,
       translateFlashers: Boolean(tlTargets.length && translateFlashers),

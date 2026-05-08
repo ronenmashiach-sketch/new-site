@@ -22,9 +22,12 @@ function escapeHtml(s) {
 
 async function sendViaResend({ to, subject, textBody, html }) {
   const key = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM || process.env.RESEND_FROM;
-  if (!key || !from) {
-    return { ok: false, reason: 'חסר RESEND_API_KEY או EMAIL_FROM/RESEND_FROM' };
+  const from =
+    process.env.EMAIL_FROM ||
+    process.env.RESEND_FROM ||
+    'onboarding@resend.dev';
+  if (!key) {
+    return { ok: false, reason: 'חסר RESEND_API_KEY' };
   }
 
   const res = await fetch('https://api.resend.com/emails', {

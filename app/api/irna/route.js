@@ -1,6 +1,6 @@
 import { loadCSVData } from '@/utils/csvDatabase';
-import { buildBnaDbCsvUpdates, syncBnaRowToDbCsv } from '@/utils/bnaDbCsvSync';
-import { BNA_HOME_URL, GOOGLE_NEWS_BNA_RSS, buildBnaNewsPayload } from '@/utils/bnaNewsPayload';
+import { buildIrnaDbCsvUpdates, syncIrnaRowToDbCsv } from '@/utils/irnaDbCsvSync';
+import { IRNA_HOME_URL, buildIrnaNewsPayload } from '@/utils/irnaNewsPayload';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,12 +38,12 @@ function parseUseDbFallback(raw) {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
-function isBnaFamilyUrl(urlString) {
+function isIrnaFamilyUrl(urlString) {
   try {
     const u = new URL(urlString);
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
     const h = u.hostname.toLowerCase();
-    return h === 'bna.bh' || h.endsWith('.bna.bh');
+    return h === 'irna.ir' || h.endsWith('.irna.ir');
   } catch {
     return false;
   }
@@ -75,17 +75,16 @@ function buildFromCachedDbRow(row) {
 }
 
 /**
- * GET /api/bna — Hero מדף הבית (לעיתים נחסם AWS WAF) + מבזקים מ־RSS ב־api.bna.bh (ברירת מחדל אם לא מועבר rssUrl) + תרגום.
- * פרמטרים: rssUrl, homeUrl, flashers, translate, translateFlashers, useDbFallback.
+ * GET /api/irna — סקריפינג דף הבית (כותרת, תמונה, לינק, מבזקים). ללא RSS.
+ * Query: homeUrl, flashers, translate, translateFlashers, useDbFallback
  */
 export async function GET(request) {
   try {
     const { searchParams } = request.nextUrl;
-    const homeUrl = (searchParams.get('homeUrl') && searchParams.get('homeUrl').trim()) || BNA_HOME_URL;
-    const rssUrl = (searchParams.get('rssUrl') && searchParams.get('rssUrl').trim()) || '';
+    const homeUrl = (searchParams.get('homeUrl') && searchParams.get('homeUrl').trim()) || IRNA_HOME_URL;
 
-    if (!isBnaFamilyUrl(homeUrl) || (rssUrl && !isBnaFamilyUrl(rssUrl))) {
-      return Response.json({ error: 'מותר רק דומיין bna.bh ל־rssUrl ול־homeUrl' }, { status: 400 });
+    if (!isIrnaFamilyUrl(homeUrl)) {
+      return Response.json({ error: 'מותר רק דומיין irna.ir ל־homeUrl' }, { status: 400 });
     }
 
     const translateLangs = parseTranslateLangs(searchParams.get('translate'));
@@ -98,8 +97,7 @@ export async function GET(request) {
     let meta;
 
     try {
-      const bundle = await buildBnaNewsPayload({
-        rssUrl,
+      const bundle = await buildIrnaNewsPayload({
         homeUrl,
         flashersLimit,
         translateLangs,
@@ -113,21 +111,19 @@ export async function GET(request) {
       if (!useDbFallback) {
         return Response.json(
           {
-            error: 'לא ניתן לטעון BNA',
+            error: 'לא ניתן לטעון IRNA (סקריפינג דף הבית)',
             fetchError,
-            hint:
-              'בדרך כלל נטען מ־api.bna.bh או מ־Google News (site:bna.bh). אם הכל נכשל — נסה ?useDbFallback=1 (DB.csv).',
-            googleNewsRssUrl: GOOGLE_NEWS_BNA_RSS,
+            hint: 'אם הרשת חוסמת — נסה ?useDbFallback=1 לקריאת עותק מ־DB.csv.',
           },
           { status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' } },
         );
       }
       const rows = await loadCSVData();
-      const row = rows.find((r) => String(r.source_key || '').trim().toLowerCase() === 'bna');
+      const row = rows.find((r) => String(r.source_key || '').trim().toLowerCase() === 'irna');
       const cached = buildFromCachedDbRow(row);
       if (!cached) {
         return Response.json(
-          { error: 'אין נתונים ב-DB.csv ל־bna', fetchError },
+          { error: 'אין נתונים ב-DB.csv ל־irna', fetchError },
           { status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' } },
         );
       }
@@ -150,7 +146,7 @@ export async function GET(request) {
       );
     }
 
-    const csvPatch = buildBnaDbCsvUpdates({
+    const csvPatch = buildIrnaDbCsvUpdates({
       hero,
       flashers,
       homeUrl,
@@ -161,11 +157,11 @@ export async function GET(request) {
     let dbCsvSynced = false;
     let dbCsvSyncError = null;
     try {
-      await syncBnaRowToDbCsv(csvPatch);
+      await syncIrnaRowToDbCsv(csvPatch);
       dbCsvSynced = true;
     } catch (err) {
       dbCsvSyncError = String(err?.message || err);
-      console.error('api/bna DB.csv sync:', err);
+      console.error('api/irna DB.csv sync:', err);
     }
 
     return Response.json(
@@ -189,4 +185,3 @@ export async function GET(request) {
     );
   }
 }
-

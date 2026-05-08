@@ -1,10 +1,13 @@
 /** @type {import('next').NextConfig} */
-// When using optional Base44 (?appId= / NEXT_PUBLIC_BASE44_APP_ID), proxy /api/* to Base44.
-// app/api/* route handlers still take precedence.
-const base44ApiOrigin = process.env.BASE44_API_ORIGIN || 'https://base44.app'
+// When BASE44_API_ORIGIN is explicitly set, proxy unmatched /api/* requests to Base44.
+// app/api/* route handlers always take precedence (fallback only fires when no local route matches).
+const base44ApiOrigin = process.env.BASE44_API_ORIGIN
 
 const nextConfig = {
   async rewrites() {
+    if (!base44ApiOrigin) {
+      return { beforeFiles: [], afterFiles: [], fallback: [] }
+    }
     return {
       fallback: [
         {

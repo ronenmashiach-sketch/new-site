@@ -16,7 +16,10 @@ export async function GET() {
     const csvText = readFileSync(DB_PATH, 'utf8');
     return new Response(csvText, {
       status: 200,
-      headers: { 'Content-Type': 'text/csv; charset=utf-8' },
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
     });
   } catch (error) {
     console.error('Error reading DB.csv:', error);
