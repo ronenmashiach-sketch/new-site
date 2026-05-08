@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic';
 
 const DEFAULT_HOME = 'https://jordantimes.com/';
 const DEFAULT_RSS = 'https://jordantimes.com/rss';
+/** ה-API הפנימי של האתר — מחזיר JSON ישירות, ללא Cloudflare. widget 1593 = hero הראשי. */
+const JT_WIDGET_API = 'https://jordantimes.com/api/pb/widget/1593/json';
 /** כש־RSS הישיר חסום (Cloudflare), מנסים Google News — לא זהה לדף הבית אך עדכני יחסית. */
 const GOOGLE_NEWS_JT_RSS =
   'https://news.google.com/rss/search?q=' +
@@ -83,6 +85,52 @@ async function fetchRssText(rssUrl) {
 function looksLikeCloudflareBlock(text) {
   const t = String(text || '').slice(0, 2500).toLowerCase();
   return t.includes('just a moment') || t.includes('cloudflare') || t.includes('cf-chl');
+}
+
+/**
+ * מושך את כתבות ה-hero מה-JSON API הפנימי של Jordan Times (widget 1593).
+ * ה-API פתוח לגמרי ללא Cloudflare — מחזיר תמונה וכותרת ישירות.
+ * @returns {{ hero: object, flashers: object[] } | null}
+ */
+async function fetchJordanTimesViaWidgetApi() {
+  const res = await fetch(JT_WIDGET_API, {
+    cache: 'no-store',
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      Accept: 'application/json',
+      Referer: 'https://jordantimes.com/',
+    },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`Widget API HTTP ${res.status}`);
+  const json = await res.json();
+  if (json?.response !== 'success' || !Array.isArray(json.data) || !json.data.length) {
+    throw new Error('Widget API: תגובה ריקה או שגויה');
+  }
+
+  const articles = json.data;
+  const first = articles[0];
+  const imageUrl =
+    (first.image?.full && !first.image.full.includes('no-image')) ? first.image.full :
+    (first.image?.desktop && !first.image.desktop.includes('no-image')) ? first.image.desktop :
+    '';
+
+  const hero = {
+    title: String(first.title || '').trim(),
+    subTitle: String(first.brief || first.subtitle || '').trim(),
+    imageUrl,
+    articleUrl: first.link || null,
+  };
+
+  const flashers = articles.slice(1).map((a) => ({
+    title: String(a.title || '').trim(),
+    articleUrl: a.link || null,
+    imageUrl:
+      (a.image?.full && !a.image.full.includes('no-image')) ? a.image.full : null,
+  })).filter((f) => f.title && f.articleUrl);
+
+  return { hero, flashers };
 }
 
 function parseUseDbFallback(raw) {
@@ -199,30 +247,43 @@ export async function GET(request) {
     let flashersSource = null;
     let rssError = null;
     let googleNewsError = null;
+    let widgetApiError = null;
+    let widgetApiResult = null;
 
+    // ניסיון ראשון: Widget JSON API — מחזיר תמונות, ללא Cloudflare
     try {
-      const rssXml = await fetchRssText(rssUrl);
-      if (looksLikeCloudflareBlock(rssXml)) throw new Error('Cloudflare blocked (Just a moment)');
-      const parsed = parseRssItemsServer(rssXml);
-      if (!parsed.length) throw new Error('RSS ריק');
-      items = parsed;
-      flashersSource = 'rss';
+      widgetApiResult = await fetchJordanTimesViaWidgetApi();
+      flashersSource = 'widget_api';
     } catch (e) {
-      rssError = String(e?.message || e);
+      widgetApiError = String(e?.message || e);
+    }
+
+    // אם ה-Widget API נכשל — ניסיון RSS ישיר
+    if (!widgetApiResult) {
       try {
-        const gXml = await fetchRssText(GOOGLE_NEWS_JT_RSS);
-        if (looksLikeCloudflareBlock(gXml)) throw new Error('Google RSS blocked');
-        const prepared = prepareGoogleNewsItems(parseRssItemsServer(gXml));
-        if (!prepared.length) throw new Error('Google News RSS ריק אחרי סינון');
-        items = prepared;
-        flashersSource = 'google_news_rss';
-      } catch (e2) {
-        googleNewsError = String(e2?.message || e2);
-        items = [];
+        const rssXml = await fetchRssText(rssUrl);
+        if (looksLikeCloudflareBlock(rssXml)) throw new Error('Cloudflare blocked (Just a moment)');
+        const parsed = parseRssItemsServer(rssXml);
+        if (!parsed.length) throw new Error('RSS ריק');
+        items = parsed;
+        flashersSource = 'rss';
+      } catch (e) {
+        rssError = String(e?.message || e);
+        try {
+          const gXml = await fetchRssText(GOOGLE_NEWS_JT_RSS);
+          if (looksLikeCloudflareBlock(gXml)) throw new Error('Google RSS blocked');
+          const prepared = prepareGoogleNewsItems(parseRssItemsServer(gXml));
+          if (!prepared.length) throw new Error('Google News RSS ריק אחרי סינון');
+          items = prepared;
+          flashersSource = 'google_news_rss';
+        } catch (e2) {
+          googleNewsError = String(e2?.message || e2);
+          items = [];
+        }
       }
     }
 
-    if (!items.length) {
+    if (!widgetApiResult && !items.length) {
       if (!useDbFallback) {
         return Response.json(
           {
@@ -276,24 +337,31 @@ export async function GET(request) {
       );
     }
 
-    const heroItem = items[0];
-    const hero = {
-      title: heroItem.title || '',
-      subTitle: heroItem.description || '',
-      imageUrl: heroItem.imageUrl || '',
-      articleUrl: heroItem.link || null,
-    };
+    let hero;
+    let flashers;
 
-    let flashers = items
-      .slice(0, flashersLimit + 5)
-      .map((it) => ({
-        title: it.title || '',
-        articleUrl: it.link || null,
-        imageUrl: it.imageUrl || null,
-      }))
-      .filter((it) => it.title && it.articleUrl)
-      .filter((it) => it.articleUrl !== hero.articleUrl)
-      .slice(0, flashersLimit);
+    if (widgetApiResult) {
+      hero = widgetApiResult.hero;
+      flashers = widgetApiResult.flashers.slice(0, flashersLimit);
+    } else {
+      const heroItem = items[0];
+      hero = {
+        title: heroItem.title || '',
+        subTitle: heroItem.description || '',
+        imageUrl: heroItem.imageUrl || '',
+        articleUrl: heroItem.link || null,
+      };
+      flashers = items
+        .slice(0, flashersLimit + 5)
+        .map((it) => ({
+          title: it.title || '',
+          articleUrl: it.link || null,
+          imageUrl: it.imageUrl || null,
+        }))
+        .filter((it) => it.title && it.articleUrl)
+        .filter((it) => it.articleUrl !== hero.articleUrl)
+        .slice(0, flashersLimit);
+    }
 
     let titleTranslations = {};
     let translateErrors = {};
@@ -349,6 +417,7 @@ export async function GET(request) {
           rssError: flashersSource === 'rss' ? null : rssError,
           googleNewsRssUrl: GOOGLE_NEWS_JT_RSS,
           googleNewsError: flashersSource === 'google_news_rss' ? null : googleNewsError,
+          widgetApiError: widgetApiError || null,
           flashersSource,
           flashersReturned: flashers.length,
           translateLangs,
