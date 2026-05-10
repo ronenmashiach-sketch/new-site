@@ -90,7 +90,7 @@ function looksLikeCloudflareBlock(text) {
 /**
  * מושך את כתבות ה-hero מה-JSON API הפנימי של Jordan Times (widget 1593).
  * ה-API פתוח לגמרי ללא Cloudflare — מחזיר תמונה וכותרת ישירות.
- * @returns {{ hero: object, flashers: object[] } | null}
+ * @returns 
  */
 async function fetchJordanTimesViaWidgetApi() {
   const res = await fetch(JT_WIDGET_API, {

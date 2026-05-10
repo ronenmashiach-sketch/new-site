@@ -188,7 +188,10 @@ async function fetchHomepageHero(homeUrl) {
 
     const href = extractFirstHrefNearTitle(html, title);
     const articleUrl = href ? absoluteUrl(r.url || homeUrl, href) : null;
-    const imageUrl = extractFirstImageNearTitle(html, title, r.url || homeUrl);
+
+    // og:image is the most reliable source; fall back to searching near the title
+    const ogImage = extractOgContent(html, 'og:image');
+    const imageUrl = ogImage || extractFirstImageNearTitle(html, title, r.url || homeUrl);
 
     const out = { title, articleUrl, imageUrl: imageUrl || null };
     cacheSet(cacheKey, out, CACHE_TTL_MS);
@@ -199,6 +202,17 @@ async function fetchHomepageHero(homeUrl) {
     return await inFlight;
   } finally {
     inFlight = null;
+  }
+}
+
+async function fetchArticleOgImage(articleUrl) {
+  if (!articleUrl) return null;
+  try {
+    const r = await fetchWithRetries(articleUrl, 2);
+    if (!r.ok || looksLikeHumanVerification(r.text)) return null;
+    return extractOgContent(r.text, 'og:image') || null;
+  } catch {
+    return null;
   }
 }
 
@@ -298,14 +312,21 @@ export async function buildBnaNewsPayload(opts = {}) {
 
   const firstRss = items[0] || { title: '', link: null, imageUrl: null, description: '' };
 
+  // If we have no image yet, try fetching og:image from the hero article page
+  let heroArticleUrl = homeHero?.articleUrl || firstRss.link || null;
+  let heroImageUrl = homeHero?.imageUrl || firstRss.imageUrl || '';
+  if (!heroImageUrl && heroArticleUrl) {
+    heroImageUrl = (await fetchArticleOgImage(heroArticleUrl)) || '';
+  }
+
   const hero = {
     title: homeHero?.title || firstRss.title || '',
     fullTitle: homeHero?.title || firstRss.title || '',
     titleTranslations: { he: '', ar: '' },
     subTitle: '',
     subTitleTranslations: { he: '', ar: '' },
-    imageUrl: homeHero?.imageUrl || firstRss.imageUrl || '',
-    articleUrl: homeHero?.articleUrl || firstRss.link || null,
+    imageUrl: heroImageUrl,
+    articleUrl: heroArticleUrl,
   };
 
   let heroTranslateErrors = {};
