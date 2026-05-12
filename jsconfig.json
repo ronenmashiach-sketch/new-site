@@ -16,6 +16,6 @@
     "resolveJsonModule": true,
     "types": []
   },
-  "include": ["src/components/**/*.js", "src/pages/**/*.jsx", "src/Layout.jsx", "app/**/*.js"],
+  "include": ["src/components/**/*.js", "src/hooks/**/*.js", "src/pages/**/*.jsx", "src/Layout.jsx", "app/**/*.js"],
   "exclude": ["node_modules", "dist", "src/vite-plugins", "src/components/ui", "src/api", "src/lib"]
 } 
