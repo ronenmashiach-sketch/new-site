@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { NEWS_SOURCES, LANGUAGES } from "@/lib/newsSources";
+import { mergeOrderWithCatalog, sortSourcesByKeyOrder } from "@/lib/newsSourceOrder";
 import NewsHeader from "@/components/news/NewsHeader";
 import NewsCard from "@/components/news/NewsCard";
 import NewsCardSkeleton from "@/components/news/NewsCardSkeleton";
@@ -20,10 +21,14 @@ const base44LoginOrigin =
 export default function Dashboard() {
   const { isLoadingAuth, isLoadingPublicSettings, authError, appParams } = useAuth();
   const [lang, setLang] = useState("he");
+  const [orderedSources, setOrderedSources] = useState(NEWS_SOURCES);
   const [newsData, setNewsData] = useState({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [loadingKeys, setLoadingKeys] = useState(new Set());
+  const [siteLogoUrl, setSiteLogoUrl] = useState(null);
+  const [siteLogoUpdatedAt, setSiteLogoUpdatedAt] = useState(null);
+  const [siteLogoSizePx, setSiteLogoSizePx] = useState(40);
 
   useEffect(() => {
     if (authError?.type !== "auth_required" || !appParams?.appId?.trim()) return;
@@ -32,6 +37,63 @@ export default function Dashboard() {
   }, [authError, appParams]);
 
   const dir = LANGUAGES[lang].dir;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/news-source-order", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = await res.json().catch(() => ({}));
+        if (!Array.isArray(data?.keys) || cancelled) return;
+        const keys = mergeOrderWithCatalog(data.keys, NEWS_SOURCES);
+        setOrderedSources(sortSourcesByKeyOrder(NEWS_SOURCES, keys));
+      } catch {
+        /* keep default NEWS_SOURCES order */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/site-logo", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        setSiteLogoUrl(typeof data?.logoUrl === "string" ? data.logoUrl : null);
+        setSiteLogoUpdatedAt(typeof data?.updatedAt === "string" ? data.updatedAt : null);
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/site-branding", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const size = Number(data?.logoSizePx);
+        setSiteLogoSizePx(Number.isFinite(size) ? size : 40);
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Load cached data from CSV
   const loadCachedData = useCallback(async () => {
@@ -56,10 +118,10 @@ export default function Dashboard() {
   // ריענון ידני בלבד (RSS → מצב במסך; לא כותב ל־DB.csv)
   const refreshAllSources = useCallback(async () => {
     setIsRefreshing(true);
-    const allKeys = new Set(NEWS_SOURCES.map((s) => s.key));
+    const allKeys = new Set(orderedSources.map((s) => s.key));
     setLoadingKeys(allKeys);
 
-    const promises = NEWS_SOURCES.map(async (source) => {
+    const promises = orderedSources.map(async (source) => {
       try {
         const data = await fetchSource(source);
         setNewsData((prev) => ({ ...prev, [source.key]: data }));
@@ -83,7 +145,7 @@ export default function Dashboard() {
 
     setLastUpdated(new Date().toISOString());
     setIsRefreshing(false);
-  }, [fetchSource]);
+  }, [fetchSource, orderedSources]);
 
   // טעינה ראשונה: רק מ־DB.csv — בלי RSS וללא עדכון רשת אוטומטי.
   useEffect(() => {
@@ -124,11 +186,14 @@ export default function Dashboard() {
         onRefresh={refreshAllSources}
         isRefreshing={isRefreshing}
         lastUpdated={lastUpdated}
+        logoUrl={siteLogoUrl}
+        logoUpdatedAt={siteLogoUpdatedAt}
+        logoSizePx={siteLogoSizePx}
       />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 items-stretch">
-          {NEWS_SOURCES.map((source, index) => {
+          {orderedSources.map((source, index) => {
             const data = newsData[source.key];
             const isLoading = loadingKeys.has(source.key);
 

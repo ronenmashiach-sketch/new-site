@@ -1,7 +1,7 @@
 import { AdminIconView } from '@/components/admin/views/AdminIconView';
 
 export const metadata = {
-  title: 'אייקון · מנהל',
+  title: 'לוגו ואייקון · מנהל',
 };
 
 export default function AdminIconPage() {

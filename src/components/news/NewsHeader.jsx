@@ -4,7 +4,16 @@ import { Button } from "@/components/ui/button";
 import LanguageToggle from "./LanguageToggle";
 import BwThemeToggle from "./BwThemeToggle";
 
-export default function NewsHeader({ currentLang, onLangChange, onRefresh, isRefreshing, lastUpdated }) {
+export default function NewsHeader({
+  currentLang,
+  onLangChange,
+  onRefresh,
+  isRefreshing,
+  lastUpdated,
+  logoUrl,
+  logoUpdatedAt,
+  logoSizePx,
+}) {
   const titles = {
     he: "BaSaD",
     ar: "BaSaD",
@@ -17,6 +26,16 @@ export default function NewsHeader({ currentLang, onLangChange, onRefresh, isRef
     en: "Breaking Story Daily",
   };
 
+  const logoSrc =
+    logoUrl && typeof logoUrl === 'string'
+      ? logoUpdatedAt
+        ? `${logoUrl}?v=${encodeURIComponent(logoUpdatedAt)}`
+        : logoUrl
+      : null;
+
+  const logoBoxSize =
+    typeof logoSizePx === 'number' && Number.isFinite(logoSizePx) ? logoSizePx : 40;
+
   return (
     <header className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border">
       <div className="max-w-7xl mx-auto px-4 py-4">
@@ -25,9 +44,28 @@ export default function NewsHeader({ currentLang, onLangChange, onRefresh, isRef
             className="flex items-center gap-3"
             dir={currentLang === "en" ? "ltr" : "rtl"}
           >
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shrink-0">
-              <Globe className="w-5 h-5 text-primary-foreground" />
-            </div>
+            {logoSrc ? (
+              <div
+                className="rounded-xl bg-muted flex items-center justify-center shadow-lg shrink-0 overflow-hidden border border-border"
+                style={{ width: logoBoxSize, height: logoBoxSize }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={logoSrc}
+                  alt=""
+                  role="presentation"
+                  className="h-full w-full object-cover"
+                  decoding="async"
+                />
+              </div>
+            ) : (
+              <div
+                className="rounded-xl bg-primary flex items-center justify-center shadow-lg shrink-0"
+                style={{ width: logoBoxSize, height: logoBoxSize }}
+              >
+                <Globe className="w-5 h-5 text-primary-foreground" />
+              </div>
+            )}
             <div className="text-center">
               <h1 className="text-4xl font-extrabold text-foreground tracking-tight">
                 {titles[currentLang]}
