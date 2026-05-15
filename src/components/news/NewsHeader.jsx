@@ -3,6 +3,12 @@ import { Globe, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import LanguageToggle from "./LanguageToggle";
 import BwThemeToggle from "./BwThemeToggle";
+import {
+  buildSiteSubtitleRichWrapper,
+  buildSiteSubtitleStyle,
+  buildSiteTitleRichWrapper,
+  buildSiteTitleStyle,
+} from "@/lib/siteTitleBranding";
 
 export default function NewsHeader({
   currentLang,
@@ -13,19 +19,11 @@ export default function NewsHeader({
   logoUrl,
   logoUpdatedAt,
   logoSizePx,
+  siteTitle,
+  siteSubtitle,
+  siteTitleHtml,
+  siteSubtitleHtml,
 }) {
-  const titles = {
-    he: "BaSaD",
-    ar: "BaSaD",
-    en: "BaSaD",
-  };
-
-  const subtitles = {
-    he: "Breaking Story Daily",
-    ar: "Breaking Story Daily",
-    en: "Breaking Story Daily",
-  };
-
   const logoSrc =
     logoUrl && typeof logoUrl === 'string'
       ? logoUpdatedAt
@@ -35,6 +33,9 @@ export default function NewsHeader({
 
   const logoBoxSize =
     typeof logoSizePx === 'number' && Number.isFinite(logoSizePx) ? logoSizePx : 40;
+
+  const titleRichWrap = buildSiteTitleRichWrapper(siteTitle);
+  const subtitleRichWrap = buildSiteSubtitleRichWrapper(siteSubtitle);
 
   return (
     <header className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border">
@@ -66,13 +67,31 @@ export default function NewsHeader({
                 <Globe className="w-5 h-5 text-primary-foreground" />
               </div>
             )}
-            <div className="text-center">
-              <h1 className="text-4xl font-extrabold text-foreground tracking-tight">
-                {titles[currentLang]}
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                {subtitles[currentLang]}
-              </p>
+            <div className="min-w-0 text-center">
+              {siteTitleHtml?.replace(/<[^>]+>/g, "").trim() ? (
+                <div
+                  className={titleRichWrap.className}
+                  style={titleRichWrap.style}
+                  role="heading"
+                  aria-level={1}
+                  dangerouslySetInnerHTML={{ __html: siteTitleHtml }}
+                />
+              ) : (
+                <h1 className="tracking-tight break-words" style={buildSiteTitleStyle(siteTitle)}>
+                  {siteTitle?.text?.trim() ? siteTitle.text : "BaSaD"}
+                </h1>
+              )}
+              {siteSubtitleHtml?.replace(/<[^>]+>/g, "").trim() ? (
+                <div
+                  className={subtitleRichWrap.className}
+                  style={subtitleRichWrap.style}
+                  dangerouslySetInnerHTML={{ __html: siteSubtitleHtml }}
+                />
+              ) : siteSubtitle?.text?.trim() ? (
+                <p className="mt-0.5 break-words" style={buildSiteSubtitleStyle(siteSubtitle)}>
+                  {siteSubtitle.text}
+                </p>
+              ) : null}
             </div>
           </div>
 

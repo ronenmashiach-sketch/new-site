@@ -8,6 +8,7 @@ import {
   siteLogoAssetHref,
   siteLogoMimeType,
 } from '@/lib/site-logo.server'
+import { readSiteBranding } from '@/lib/site-branding.server'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -16,11 +17,17 @@ const AuthProvider = dynamicImport(() => import('@/lib/AuthContext').then(mod =>
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata() {
+  const branding = await readSiteBranding();
+  const pageTitle =
+    (branding.siteTitleHtml && branding.siteTitleHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()) ||
+    branding.siteTitle?.text?.trim() ||
+    'Base44 APP';
+
   const { logoUrl, updatedAt } = await readSiteLogoState();
   const href = siteLogoAssetHref(logoUrl, updatedAt);
   if (!href) {
     return {
-      title: 'Base44 APP',
+      title: pageTitle,
       description: 'News app',
       icons: {
         icon: [{ url: defaultFaviconHref(), type: 'image/svg+xml' }],
@@ -30,7 +37,7 @@ export async function generateMetadata() {
   }
   const type = siteLogoMimeType(logoUrl);
   return {
-    title: 'Base44 APP',
+    title: pageTitle,
     description: 'News app',
     icons: {
       icon: [{ url: href, type }],

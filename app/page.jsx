@@ -10,6 +10,14 @@ import { listNewsSource } from "@/utils/csvDatabase";
 import { useAuth } from "@/lib/AuthContext";
 import UserNotRegisteredError from "@/components/UserNotRegisteredError";
 import MissingBase44Config from "@/components/MissingBase44Config";
+import {
+  DEFAULT_SITE_SUBTITLE_DISPLAY,
+  DEFAULT_SITE_TITLE_DISPLAY,
+} from "@/lib/siteTitleBranding";
+import {
+  DEFAULT_SITE_SUBTITLE_HTML,
+  DEFAULT_SITE_TITLE_HTML,
+} from "@/lib/site-title-html";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +37,10 @@ export default function Dashboard() {
   const [siteLogoUrl, setSiteLogoUrl] = useState(null);
   const [siteLogoUpdatedAt, setSiteLogoUpdatedAt] = useState(null);
   const [siteLogoSizePx, setSiteLogoSizePx] = useState(40);
+  const [siteTitle, setSiteTitle] = useState(DEFAULT_SITE_TITLE_DISPLAY);
+  const [siteSubtitle, setSiteSubtitle] = useState(DEFAULT_SITE_SUBTITLE_DISPLAY);
+  const [siteTitleHtml, setSiteTitleHtml] = useState(DEFAULT_SITE_TITLE_HTML);
+  const [siteSubtitleHtml, setSiteSubtitleHtml] = useState(DEFAULT_SITE_SUBTITLE_HTML);
 
   useEffect(() => {
     if (authError?.type !== "auth_required" || !appParams?.appId?.trim()) return;
@@ -86,6 +98,14 @@ export default function Dashboard() {
         if (cancelled) return;
         const size = Number(data?.logoSizePx);
         setSiteLogoSizePx(Number.isFinite(size) ? size : 40);
+        if (data?.siteTitle && typeof data.siteTitle === "object") {
+          setSiteTitle({ ...DEFAULT_SITE_TITLE_DISPLAY, ...data.siteTitle });
+        }
+        if (data?.siteSubtitle && typeof data.siteSubtitle === "object") {
+          setSiteSubtitle({ ...DEFAULT_SITE_SUBTITLE_DISPLAY, ...data.siteSubtitle });
+        }
+        if (typeof data?.siteTitleHtml === "string") setSiteTitleHtml(data.siteTitleHtml);
+        if (typeof data?.siteSubtitleHtml === "string") setSiteSubtitleHtml(data.siteSubtitleHtml);
       } catch {
         /* keep defaults */
       }
@@ -189,6 +209,10 @@ export default function Dashboard() {
         logoUrl={siteLogoUrl}
         logoUpdatedAt={siteLogoUpdatedAt}
         logoSizePx={siteLogoSizePx}
+        siteTitle={siteTitle}
+        siteSubtitle={siteSubtitle}
+        siteTitleHtml={siteTitleHtml}
+        siteSubtitleHtml={siteSubtitleHtml}
       />
 
       <main className="max-w-7xl mx-auto px-4 py-8">

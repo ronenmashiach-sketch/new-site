@@ -1,7 +1,7 @@
 import { AdminTextsView } from '@/components/admin/views/AdminTextsView';
 
 export const metadata = {
-  title: 'טקסטים · מנהל',
+  title: 'שם ועיצוב · מנהל',
 };
 
 export default function AdminTextsPage() {

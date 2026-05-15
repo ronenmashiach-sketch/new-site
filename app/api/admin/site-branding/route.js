@@ -20,12 +20,27 @@ export async function POST(request) {
   }
 
   try {
-    const next = await writeSiteBranding({ logoSizePx: body?.logoSizePx });
+    const patch = {};
+    if (body && 'logoSizePx' in body) patch.logoSizePx = body.logoSizePx;
+    if (body && 'siteTitle' in body) patch.siteTitle = body.siteTitle;
+    if (body && 'siteSubtitle' in body) patch.siteSubtitle = body.siteSubtitle;
+    if (body && 'siteTitleHtml' in body) patch.siteTitleHtml = body.siteTitleHtml;
+    if (body && 'siteSubtitleHtml' in body) patch.siteSubtitleHtml = body.siteSubtitleHtml;
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json({ ok: false, message: 'לא נשלחו שדות לעדכון.' }, { status: 400 });
+    }
+    const next = await writeSiteBranding(patch);
     return NextResponse.json({ ok: true, ...next });
   } catch (e) {
     if (e?.message === 'invalid_logo_size') {
       return NextResponse.json(
         { ok: false, message: 'גודל לוגו חייב להיות מספר בין 20 ל־96 פיקסלים.' },
+        { status: 400 },
+      );
+    }
+    if (e?.message === 'invalid_title_html') {
+      return NextResponse.json(
+        { ok: false, message: 'שם האתר לא יכול להיות ריק.' },
         { status: 400 },
       );
     }
