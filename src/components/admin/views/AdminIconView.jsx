@@ -95,7 +95,7 @@ export function AdminIconView() {
         setError(typeof data?.message === 'string' ? data.message : 'ההעלאה נכשלה.');
         return;
       }
-      setNotice('הלוגו עודכן. הקובץ הקודם הוחלף.');
+      setNotice('הלוגו והפאביקון עודכנו. הקובץ הקודם הוחלף.');
       setFile(null);
       const input = document.getElementById('admin-site-logo-file');
       if (input) input.value = '';
@@ -113,16 +113,18 @@ export function AdminIconView() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">לוגו ואייקון</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">לוגו האתר</h1>
         <p className="text-sm text-muted-foreground">
-          לוגו האתר מוצג ליד השם בראש העמוד. בכל העלאה הקובץ הקודם נמחק ומוחלף — אין גרסאות קודמות.
+          הלוגו מוצג בכותרת האתר ומשמש גם כאייקון / פאביקון בדפדפן. בכל העלאה הקובץ הקודם נמחק ומוחלף.
         </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>לוגו האתר</CardTitle>
-          <CardDescription>PNG, JPEG, WebP, GIF או SVG — עד כ־2 מ״ב.</CardDescription>
+          <CardDescription>
+            PNG, JPEG, WebP, GIF או SVG — עד כ־2 מ״ב. אותו קובץ משמש לכותרת ולפאביקון.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
@@ -247,16 +249,6 @@ export function AdminIconView() {
               {uploading ? 'מעלים…' : 'העלאה והחלפה'}
             </Button>
           </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>אייקון / פאביקון</CardTitle>
-          <CardDescription>העלאת אייקון לדפדפן (יתווסף בהמשך).</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">מקום שמור ללוגיקת העלאה ואחסון.</p>
         </CardContent>
       </Card>
     </div>

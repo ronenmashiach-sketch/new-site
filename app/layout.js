@@ -2,25 +2,49 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import dynamicImport from 'next/dynamic'
 import { bwThemeInitScript } from '@/lib/theme-storage'
+import {
+  defaultFaviconHref,
+  readSiteLogoState,
+  siteLogoAssetHref,
+  siteLogoMimeType,
+} from '@/lib/site-logo.server'
 
 const inter = Inter({ subsets: ['latin'] })
 
 const AuthProvider = dynamicImport(() => import('@/lib/AuthContext').then(mod => mod.AuthProvider), { ssr: false })
 
-export const metadata = {
-  title: 'Base44 APP',
-  description: 'News app',
-}
-
 export const dynamic = 'force-dynamic';
+
+export async function generateMetadata() {
+  const { logoUrl, updatedAt } = await readSiteLogoState();
+  const href = siteLogoAssetHref(logoUrl, updatedAt);
+  if (!href) {
+    return {
+      title: 'Base44 APP',
+      description: 'News app',
+      icons: {
+        icon: [{ url: defaultFaviconHref(), type: 'image/svg+xml' }],
+        apple: [{ url: defaultFaviconHref(), type: 'image/svg+xml' }],
+      },
+    };
+  }
+  const type = siteLogoMimeType(logoUrl);
+  return {
+    title: 'Base44 APP',
+    description: 'News app',
+    icons: {
+      icon: [{ url: href, type }],
+      apple: [{ url: href, type }],
+      shortcut: [{ url: href, type }],
+    },
+  };
+}
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: bwThemeInitScript }} />
-        <link rel="icon" type="image/svg+xml" href="https://base44.com/logo_v2.svg" />
-        <link rel="manifest" href="/manifest.json" />
       </head>
       <body className={inter.className}>
         <AuthProvider>

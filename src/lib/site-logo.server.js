@@ -14,6 +14,33 @@ export const ALLOWED_MIME_TO_EXT = {
   'image/svg+xml': 'svg',
 };
 
+/** @type {Record<string, string>} */
+const EXT_TO_MIME = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+};
+
+const DEFAULT_FAVICON = 'https://base44.com/logo_v2.svg';
+
+export function siteLogoMimeType(publicUrl) {
+  const ext = path.extname(publicUrl).slice(1).toLowerCase();
+  return EXT_TO_MIME[ext] ?? 'image/png';
+}
+
+/** @param {string | null} publicUrl @param {string | null} updatedAt */
+export function siteLogoAssetHref(publicUrl, updatedAt) {
+  if (!publicUrl) return null;
+  return updatedAt ? `${publicUrl}?v=${encodeURIComponent(updatedAt)}` : publicUrl;
+}
+
+export function defaultFaviconHref() {
+  return DEFAULT_FAVICON;
+}
+
 export async function readSiteLogoState() {
   try {
     const raw = await fs.readFile(SITE_LOGO_META_PATH, 'utf8');
