@@ -1,7 +1,8 @@
-import { FileText, Image, ListOrdered } from 'lucide-react';
+import { FileText, Image, ListOrdered, Zap } from 'lucide-react';
 
 export const ADMIN_NAV_ITEMS = [
   { href: '/admin/dashboard/texts', label: 'שם ועיצוב', icon: FileText },
   { href: '/admin/dashboard/icon', label: 'לוגו', icon: Image },
+  { href: '/admin/dashboard/flashers', label: 'מבזקים', icon: Zap },
   { href: '/admin/dashboard/articles', label: 'סידור כתבות', icon: ListOrdered },
 ];

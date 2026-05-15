@@ -18,6 +18,8 @@ import {
   DEFAULT_SITE_SUBTITLE_HTML,
   DEFAULT_SITE_TITLE_HTML,
 } from "@/lib/site-title-html";
+import { DEFAULT_MAX_FLASHERS_DISPLAY } from "@/lib/flasher-ticker-display";
+import { speedLevelToTiming } from "@/lib/flasher-ticker-duration";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +43,10 @@ export default function Dashboard() {
   const [siteSubtitle, setSiteSubtitle] = useState(DEFAULT_SITE_SUBTITLE_DISPLAY);
   const [siteTitleHtml, setSiteTitleHtml] = useState(DEFAULT_SITE_TITLE_HTML);
   const [siteSubtitleHtml, setSiteSubtitleHtml] = useState(DEFAULT_SITE_SUBTITLE_HTML);
+  const [flasherTickerTiming, setFlasherTickerTiming] = useState(() =>
+    speedLevelToTiming(4),
+  );
+  const [maxFlashersDisplay, setMaxFlashersDisplay] = useState(DEFAULT_MAX_FLASHERS_DISPLAY);
 
   useEffect(() => {
     if (authError?.type !== "auth_required" || !appParams?.appId?.trim()) return;
@@ -106,6 +112,37 @@ export default function Dashboard() {
         }
         if (typeof data?.siteTitleHtml === "string") setSiteTitleHtml(data.siteTitleHtml);
         if (typeof data?.siteSubtitleHtml === "string") setSiteSubtitleHtml(data.siteSubtitleHtml);
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/flasher-ticker-settings", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const max = Number(data?.maxFlashersDisplay);
+        if (Number.isFinite(max) && max >= 1) {
+          setMaxFlashersDisplay(Math.min(50, Math.trunc(max)));
+        }
+        const level = Number(data?.speedLevel);
+        if (Number.isFinite(level)) {
+          setFlasherTickerTiming(speedLevelToTiming(level));
+        } else if (Number.isFinite(Number(data?.secPerRow))) {
+          setFlasherTickerTiming({
+            secPerRow: Number(data.secPerRow),
+            minDurationSec: Number(data.minDurationSec) || 12,
+            maxDurationSec: Number(data.maxDurationSec) || 120,
+          });
+        }
       } catch {
         /* keep defaults */
       }
@@ -222,11 +259,18 @@ export default function Dashboard() {
             const isLoading = loadingKeys.has(source.key);
 
             return (
-              <div key={source.key} className="min-w-0 flex">
+              <div key={source.key} className="flex h-full min-w-0 w-full">
                 {isLoading && !data ? (
                   <NewsCardSkeleton />
                 ) : (
-                  <NewsCard source={source} data={data} lang={lang} index={index} />
+                  <NewsCard
+                    source={source}
+                    data={data}
+                    lang={lang}
+                    index={index}
+                    tickerTiming={flasherTickerTiming}
+                    maxFlashersDisplay={maxFlashersDisplay}
+                  />
                 )}
               </div>
             );

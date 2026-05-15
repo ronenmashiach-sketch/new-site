@@ -1,3 +1,27 @@
 {
-  "logoSizePx": 71
+  "logoSizePx": 71,
+  "siteTitle": {
+    "text": "BaSaD",
+    "fontFamily": "inter",
+    "fontSizePx": 36,
+    "fontWeight": 800,
+    "color": "#0f172a",
+    "useGradient": false,
+    "gradientFrom": "#0f172a",
+    "gradientTo": "#3b82f6",
+    "letterSpacingPx": -0.5
+  },
+  "siteSubtitle": {
+    "text": "Breaking Story Daily",
+    "fontFamily": "inter",
+    "fontSizePx": 14,
+    "fontWeight": 400,
+    "color": "#64748b",
+    "useGradient": true,
+    "gradientFrom": "#075cd5",
+    "gradientTo": "#c3d100",
+    "letterSpacingPx": 0
+  },
+  "siteTitleHtml": "<p><strong style=\"color: rgb(255, 255, 0)\"><span class=\"ql-cursor\">﻿</span>BaSaD</strong></p>",
+  "siteSubtitleHtml": "<p><span style=\"color: rgb(100, 116, 139)\">Breaking Story Daily</span></p>"
 }

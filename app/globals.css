@@ -96,7 +96,7 @@
 }
 
 .animate-ticker-vertical {
-  animation: ticker-vertical 12s linear infinite;
+  animation: ticker-vertical 32s linear infinite;
 }
 
 /* Rich text editor (Quill) — theme-aware contrast for toolbar + icons */

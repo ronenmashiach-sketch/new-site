@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { ExternalLink } from "lucide-react";
 import FlasherTicker from "./FlasherTicker";
+import { limitFlashersForDisplay } from "@/lib/flasher-ticker-display";
 import { plainTextFromRssHtml } from "@/utils/rssParseServer";
 
-export default function NewsCard({ source, data, lang, index }) {
+export default function NewsCard({ source, data, lang, index, tickerTiming, maxFlashersDisplay }) {
   const [heroImageFailed, setHeroImageFailed] = useState(false);
   const mainHeadline = data?.[`main_headline_${lang}`] || null;
   const imageHeadlineRaw = data?.[`image_headline_${lang}`] || null;
@@ -12,7 +13,7 @@ export default function NewsCard({ source, data, lang, index }) {
       ? plainTextFromRssHtml(String(imageHeadlineRaw)) || null
       : null;
   const imageUrl = data?.image_url || null;
-  const flashers = data?.[`flashers_${lang}`] || [];
+  const flashers = limitFlashersForDisplay(data?.[`flashers_${lang}`] || [], maxFlashersDisplay);
   const isLoading = !data;
   const showHeroImage = Boolean(imageUrl) && !heroImageFailed;
 
@@ -102,12 +103,16 @@ export default function NewsCard({ source, data, lang, index }) {
           </div>
         )}
 
-        {/* Flashers */}
-        <FlasherTicker flashers={flashers} lang={lang} />
+        {/* Flashers — ממלא את השטח הפנוי עד לתחתית הכרטיס */}
+        {flashers.length > 0 ? (
+          <FlasherTicker flashers={flashers} lang={lang} tickerTiming={tickerTiming} />
+        ) : (
+          <div className="min-h-0 flex-1" aria-hidden />
+        )}
 
         {/* Last updated */}
         {data?.last_fetched && (
-          <div className="mt-3 pt-2 border-t border-border flex items-center gap-1.5">
+          <div className="mt-3 shrink-0 border-t border-border pt-2 flex items-center gap-1.5">
             <span className="text-[10px] text-muted-foreground">
               {lang === "he" ? "עודכן:" : lang === "ar" ? "تحديث:" : "Updated:"}
             </span>
